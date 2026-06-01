@@ -36,7 +36,8 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
 
     if provider in ("google", "gemini"):
         from src.core.gemini_provider import GeminiProvider
-        model = env_model if env_model.startswith("gemini") else "gemini-2.0-flash"
+        # gemini-2.5-flash has free-tier quota; gemini-2.0-flash often returns 429 (limit 0).
+        model = env_model if env_model.startswith("gemini") else "gemini-2.5-flash"
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Thiếu GEMINI_API_KEY trong .env")
@@ -52,6 +53,12 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
             alt = "./models/Phi-3-mini-4k-instruct-q4.gguf"
             if os.path.exists(alt):
                 default_path = alt
-        return LocalProvider(model_path=default_path)
+        # GPU offload: 0 = CPU only, -1 = all layers, N>0 = N layers on GPU.
+        # Needs a CUDA/Metal/Vulkan build of llama-cpp-python to take effect.
+        try:
+            n_gpu_layers = int(os.getenv("LOCAL_GPU_LAYERS", "0"))
+        except ValueError:
+            n_gpu_layers = 0
+        return LocalProvider(model_path=default_path, n_gpu_layers=n_gpu_layers)
 
     raise ValueError(f"Provider không hỗ trợ: '{provider}'. Dùng: openai | google | local")

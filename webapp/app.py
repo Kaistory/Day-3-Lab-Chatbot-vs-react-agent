@@ -30,10 +30,28 @@ from src.chatbot import Chatbot
 from src.agent.agent import ReActAgent
 from src.tools import TOOLS
 from src.telemetry.metrics import tracker
+from src.telemetry.logger import logger
 
 load_dotenv()
 
+# Web server: ghi log đầy đủ ra FILE (logs/) nhưng KHÔNG in log/lỗi ra console,
+# tránh terminal bị ngập dump lỗi (vd 429 quota dài hàng chục dòng).
+logger.silence_console()
+
 app = Flask(__name__)
+
+
+def _short_error(e: Exception, limit: int = 200) -> str:
+    """Thông điệp lỗi gọn cho người dùng: chỉ dòng đầu, cắt ngắn (không dump nguyên khối)."""
+    msg = str(e).splitlines()[0].strip() if str(e).strip() else type(e).__name__
+    return msg[:limit] + ("…" if len(msg) > limit else "")
+
+
+@app.errorhandler(Exception)
+def _handle_uncaught(e):
+    """Bắt mọi lỗi chưa xử lý -> trả JSON gọn, ghi file log, không lộ traceback."""
+    logger.error(f"Lỗi web chưa bắt: {_short_error(e)}", exc_info=False)
+    return jsonify({"error": "Đã có lỗi xảy ra phía máy chủ. Vui lòng thử lại."}), 500
 
 # --- Cache provider/chatbot/agent theo tên provider (nạp model 1 lần) ----------
 _CACHE = {}
@@ -84,7 +102,8 @@ def ask():
     try:
         engines = _get_engines(provider)
     except Exception as e:
-        return jsonify({"error": f"Không khởi tạo được provider: {e}"}), 500
+        logger.error(f"Init provider lỗi: {_short_error(e)}", exc_info=False)
+        return jsonify({"error": f"Không khởi tạo được provider: {_short_error(e)}"}), 500
 
     started = time.time()
     start_index = len(tracker.session_metrics)
@@ -99,7 +118,9 @@ def ask():
         else:  # agent
             result = {"agent": engines["agent"].run(question)}
     except Exception as e:
-        return jsonify({"error": f"Lỗi khi xử lý: {e}"}), 500
+        # Lỗi đã được ghi vào file log; trả về trình duyệt thông điệp gọn, không dump.
+        logger.error(f"Xử lý câu hỏi lỗi: {_short_error(e)}", exc_info=False)
+        return jsonify({"error": f"Lỗi khi xử lý: {_short_error(e)}"}), 500
 
     return jsonify({
         "mode": mode,

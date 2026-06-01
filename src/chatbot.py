@@ -27,7 +27,15 @@ class Chatbot:
 
     def ask(self, user_input: str) -> str:
         logger.log_event("CHATBOT_START", {"input": user_input, "model": self.llm.model_name})
-        result = self.llm.generate(user_input, system_prompt=self.system_prompt)
+        try:
+            result = self.llm.generate(user_input, system_prompt=self.system_prompt)
+        except Exception as e:
+            # Lỗi provider (vd 429 quota): log gọn ra file, trả thông điệp thân thiện.
+            short = str(e).splitlines()[0][:200] if str(e).strip() else type(e).__name__
+            logger.error(f"Chatbot LLM lỗi: {short}", exc_info=False)
+            logger.log_event("CHATBOT_FAILED", {"error": short})
+            return ("Xin lỗi, hệ thống AI tạm thời không phản hồi (có thể do mất mạng "
+                    "hoặc dịch vụ quá tải). Vui lòng thử lại sau ít phút.")
         tracker.track_request(
             provider=result.get("provider", "unknown"),
             model=self.llm.model_name,

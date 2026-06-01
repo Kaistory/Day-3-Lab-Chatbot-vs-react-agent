@@ -25,9 +25,13 @@ class ReActAgent:
         sớm thay vì đốt hết max_steps một cách vô ích.
     """
 
-    # Matches:  Action: get_lab_preparation(2)
-    _ACTION_RE = re.compile(r"Action:\s*([A-Za-z_][\w]*)\s*\((.*?)\)", re.DOTALL)
-    _FINAL_RE = re.compile(r"Final Answer:\s*(.*)", re.DOTALL)
+    # Strict form:  Action: get_lab_preparation(2)  (case-insensitive for weak models)
+    _ACTION_RE = re.compile(r"Action:\s*([A-Za-z_][\w]*)\s*\((.*?)\)", re.DOTALL | re.IGNORECASE)
+    # Lenient form for small models that drop the parentheses, e.g.
+    #   action: get_lab_objective 1   /   Action: get_lab_objective: 1
+    _ACTION_LOOSE_RE = re.compile(r"Action:\s*([A-Za-z_][\w]*)\s*[:\(]?\s*([^\n)]*)\)?", re.IGNORECASE)
+    _FINAL_RE = re.compile(r"Final Answer:\s*(.*)", re.DOTALL | re.IGNORECASE)
+    _DIGIT_RE = re.compile(r"\d+")
 
     def __init__(
         self,
@@ -108,13 +112,17 @@ QUY TẮC:
                 return self.llm.generate(transcript, system_prompt=system_prompt)
             except Exception as e:  # mất mạng, API bên thứ 3 lỗi/timeout, rate limit...
                 last_error = e
+                # Lỗi của provider (vd 429 quota) có thể dài hàng chục dòng -> chỉ
+                # log dòng đầu, gọn gàng, không dump nguyên khối.
+                short = str(e).splitlines()[0][:200] if str(e).strip() else type(e).__name__
                 logger.error(
-                    f"LLM lỗi (lần {attempt + 1}/{self.max_retries + 1}): {e}",
+                    f"LLM lỗi (lần {attempt + 1}/{self.max_retries + 1}): {short}",
                     exc_info=False,
                 )
                 if attempt < self.max_retries:
                     time.sleep(self.retry_backoff * (2 ** attempt))
-        logger.log_event("AGENT_LLM_FAILED", {"error": str(last_error)})
+        short = str(last_error).splitlines()[0][:200] if last_error else "unknown"
+        logger.log_event("AGENT_LLM_FAILED", {"error": short})
         return None
 
     def run(self, user_input: str) -> str:
@@ -129,6 +137,7 @@ QUY TẮC:
         transcript = f"Question: {user_input}\n"
         steps = 0
         final_answer = None
+        last_observation = None  # dùng làm fallback chính xác khi model yếu không kết luận tốt
         action_counts: Dict[str, int] = {}  # loop-guard: đếm Action lặp lại
 
         while steps < self.max_steps:
@@ -164,11 +173,21 @@ QUY TẮC:
                 final_answer = final_match.group(1).strip()
                 break
 
-            # 2) Did the model request an Action?
+            # 2) Did the model request an Action? Try strict (parentheses) first,
+            #    then a lenient form for small models that drop the parens.
             action_match = self._ACTION_RE.search(text)
+            if not action_match:
+                action_match = self._ACTION_LOOSE_RE.search(text)
             if action_match:
                 tool_name = action_match.group(1).strip()
-                tool_args = action_match.group(2).strip().strip("'\"")
+                tool_args = action_match.group(2).strip().strip("'\"().: ").rstrip(".")
+
+                # Small models often emit an empty/garbage arg. Recover it from the
+                # user's question: a lab number if present, else the question itself
+                # (so search/lookup tools still get a meaningful query -> grounded data).
+                if not tool_args:
+                    digit = self._DIGIT_RE.search(user_input)
+                    tool_args = digit.group(0) if digit else user_input
 
                 # Safety: cắt tham số tool quá dài.
                 if len(tool_args) > self.max_arg_chars:
@@ -187,6 +206,7 @@ QUY TẮC:
                     continue
 
                 observation = self._execute_tool(tool_name, tool_args)
+                last_observation = observation
                 logger.log_event(
                     "AGENT_OBSERVATION",
                     {"step": steps, "tool": tool_name, "args": tool_args, "observation": observation},
@@ -194,15 +214,21 @@ QUY TẮC:
                 transcript += f"Observation: {observation}\n"
                 continue
 
-            # 3) Neither -> treat the whole output as the answer (graceful fallback).
-            final_answer = text
+            # 3) Neither Final Answer nor Action. For weak models, prefer the last
+            #    accurate tool Observation over the model's free-form text.
+            final_answer = last_observation if last_observation else text
             break
 
         if final_answer is None:
-            final_answer = (
-                "Đã đạt giới hạn số bước (max_steps) mà chưa có Final Answer. "
-                "Hãy thử hỏi cụ thể hơn."
-            )
+            # Hết max_steps: nếu đã có dữ liệu chính xác từ tool thì trả về luôn,
+            # thay vì báo lỗi chung chung.
+            if last_observation:
+                final_answer = last_observation
+            else:
+                final_answer = (
+                    "Đã đạt giới hạn số bước (max_steps) mà chưa có Final Answer. "
+                    "Hãy thử hỏi cụ thể hơn."
+                )
             logger.log_event("AGENT_TIMEOUT", {"steps": steps})
 
         logger.log_event("AGENT_END", {"steps": steps, "answer": final_answer})

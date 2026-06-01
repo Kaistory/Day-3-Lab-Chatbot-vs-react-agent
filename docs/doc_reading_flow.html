@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luồng đọc tài liệu (doc) để trả lời — ReAct Agent | IT4210</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#30363d;
+    --txt:#e6edf3; --muted:#9da7b3; --accent:#58a6ff; --green:#3fb950;
+    --amber:#d29922; --pink:#f778ba; --purple:#bc8cff; --red:#f85149;
+    --mono:'Cascadia Code','Consolas','SFMono-Regular',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:'Segoe UI',system-ui,Roboto,sans-serif;line-height:1.6;}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 64px;}
+  header h1{font-size:1.7rem;margin:0 0 6px;}
+  header p{color:var(--muted);margin:0 0 4px;}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.72rem;
+    padding:2px 8px;border:1px solid var(--border);border-radius:999px;
+    color:var(--accent);margin-right:6px;}
+  h2{font-size:1.2rem;margin:40px 0 14px;border-bottom:1px solid var(--border);
+    padding-bottom:8px;}
+  h2 .num{color:var(--accent);font-family:var(--mono);margin-right:8px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:18px 20px;margin:14px 0;}
+  code{font-family:var(--mono);background:#22272e;padding:1px 6px;border-radius:5px;
+    font-size:.86em;color:var(--pink);}
+  .file{color:var(--accent);font-family:var(--mono);font-size:.82rem;}
+
+  /* ---------- Flowchart ---------- */
+  .flow{display:flex;flex-direction:column;align-items:center;gap:0;margin:8px 0;}
+  .node{width:100%;max-width:640px;border-radius:10px;padding:12px 16px;
+    border:1px solid var(--border);background:var(--panel2);position:relative;}
+  .node .lbl{font-weight:600;}
+  .node .sub{color:var(--muted);font-size:.82rem;font-family:var(--mono);margin-top:2px;}
+  .node.start,.node.end{max-width:340px;text-align:center;border-radius:999px;}
+  .node.start{background:#11271b;border-color:var(--green);}
+  .node.end{background:#2a1d2b;border-color:var(--pink);}
+  .node.io{background:#172033;border-color:var(--accent);}
+  .node.read{background:#2a230f;border-color:var(--amber);}
+  .node.proc{background:#1c2330;}
+  .node.decision{max-width:420px;text-align:center;background:#241a2e;
+    border-color:var(--purple);border-radius:14px;}
+  .arrow{width:2px;height:26px;background:var(--border);position:relative;}
+  .arrow::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--border);}
+  .arrow.lbl-yes::before,.arrow.lbl-no::before{position:absolute;left:8px;top:4px;
+    font-family:var(--mono);font-size:.72rem;white-space:nowrap;}
+  .arrow.lbl-yes::before{content:'có / Action';color:var(--green);}
+  .arrow.lbl-no::before{content:'có / Final Answer';color:var(--pink);}
+  .loopback{font-family:var(--mono);font-size:.78rem;color:var(--amber);
+    margin:4px 0;display:flex;align-items:center;gap:6px;}
+  .badge-file{position:absolute;top:8px;right:10px;font-family:var(--mono);
+    font-size:.68rem;color:var(--muted);}
+
+  /* ---------- Steps / logic ---------- */
+  ol.logic{counter-reset:step;list-style:none;padding:0;margin:0;}
+  ol.logic li{position:relative;padding:12px 14px 12px 52px;margin:10px 0;
+    background:var(--panel2);border:1px solid var(--border);border-radius:10px;}
+  ol.logic li::before{counter-increment:step;content:counter(step);
+    position:absolute;left:12px;top:12px;width:28px;height:28px;border-radius:50%;
+    background:var(--accent);color:#04101f;font-weight:700;display:flex;
+    align-items:center;justify-content:center;font-family:var(--mono);}
+  .step-title{font-weight:600;}
+
+  /* ---------- Keyword chips ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{font-family:var(--mono);font-size:.78rem;padding:5px 11px;border-radius:8px;
+    border:1px solid var(--border);background:var(--panel2);}
+  .chip b{color:var(--accent);}
+  .chip.k1{border-color:var(--amber);} .chip.k1 b{color:var(--amber);}
+  .chip.k2{border-color:var(--green);} .chip.k2 b{color:var(--green);}
+  .chip.k3{border-color:var(--purple);} .chip.k3 b{color:var(--purple);}
+
+  /* ---------- code block ---------- */
+  pre{background:#0a0e14;border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:.82rem;
+    line-height:1.5;}
+  pre .c{color:#6e7681;} pre .k{color:#ff7b72;} pre .s{color:#a5d6ff;}
+  pre .f{color:#d2a8ff;} pre .n{color:#79c0ff;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.8rem;color:var(--muted);margin-top:10px;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .dot{width:12px;height:12px;border-radius:3px;display:inline-block;}
+  footer{margin-top:48px;color:var(--muted);font-size:.8rem;text-align:center;
+    border-top:1px solid var(--border);padding-top:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Luồng "đọc tài liệu (doc) để trả lời"</h1>
+  <p>Trợ lý lab Hệ nhúng IT4210 · kiến trúc <b>ReAct Agent + Tools</b> (không phải RAG embedding)</p>
+  <div style="margin-top:10px">
+    <span class="tag">ReAct</span><span class="tag">Tool-Calling</span>
+    <span class="tag">Knowledge Base</span><span class="tag">LLM Provider</span>
+  </div>
+</header>
+
+<!-- =================== 1. FLOWCHART =================== -->
+<h2><span class="num">01</span>Flowchart</h2>
+<div class="panel">
+  <div class="flow">
+
+    <div class="node start">▶ START — câu hỏi người dùng</div>
+    <div class="arrow"></div>
+
+    <div class="node proc">
+      <span class="badge-file">agent.py:130</span>
+      <div class="lbl">Sanitize &amp; validate input</div>
+      <div class="sub">_sanitize_input() · cắt &gt; max_input_chars (Safety)</div>
+    </div>
+    <div class="arrow"></div>
+
+    <div class="node proc">
+      <span class="badge-file">agent.py:136-137</span>
+      <div class="lbl">Build system prompt + transcript</div>
+      <div class="sub">liệt kê tool names/descriptions cho LLM</div>
+    </div>
+    <div class="arrow"></div>
+
+    <div class="node decision">◆ LOOP &nbsp;<code>while steps &lt; max_steps</code></div>
+    <div class="arrow"></div>
+
+    <div class="node io">
+      <span class="badge-file">agent.py:112</span>
+      <div class="lbl">LLM.generate() — Gemini sinh Thought/Action</div>
+      <div class="sub">_generate_with_retry() · retry + exponential backoff</div>
+    </div>
+    <div class="arrow"></div>
+
+    <div class="node decision">◆ Output có gì? (parse regex)</div>
+
+    <div class="arrow lbl-no"></div>
+    <div class="node end">⏹ Final Answer → trả người dùng</div>
+
+    <div class="loopback">└─ hoặc nếu là Action ↓ (parse <code>Action: tool(args)</code> · agent.py:178)</div>
+
+    <div class="node read">
+      <span class="badge-file">lab_tools.py:63 → loader.py:33</span>
+      <div class="lbl">📄 ĐỌC TÀI LIỆU — execute tool</div>
+      <div class="sub">search_lab_docs() → loader.load()/search() → open(embedded_labs.json)</div>
+    </div>
+    <div class="arrow"></div>
+
+    <div class="node proc">
+      <span class="badge-file">agent.py:214</span>
+      <div class="lbl">Ghép Observation vào transcript</div>
+      <div class="sub">transcript += "Observation: " + nội dung doc</div>
+    </div>
+
+    <div class="loopback">↺ quay lại LOOP (đưa doc cho LLM kết luận) — loop-guard chống lặp vô hạn</div>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#3fb950"></i>start</span>
+    <span><i class="dot" style="background:#58a6ff"></i>LLM I/O</span>
+    <span><i class="dot" style="background:#d29922"></i>ĐỌC DOC</span>
+    <span><i class="dot" style="background:#bc8cff"></i>decision</span>
+    <span><i class="dot" style="background:#f778ba"></i>end</span>
+  </div>
+</div>
+
+<!-- =================== 2. CODE LOGIC =================== -->
+<h2><span class="num">02</span>Logic code (mapping theo file)</h2>
+<div class="panel">
+  <ol class="logic">
+    <li><span class="step-title">Nhận &amp; làm sạch input</span> —
+      <span class="file">agent.py:128-132</span>. Guardrail an toàn: strip, cắt độ dài,
+      chặn input rỗng.</li>
+    <li><span class="step-title">Soạn prompt theo định dạng ReAct</span> —
+      <span class="file">agent.py:65-91</span>. Bơm danh sách tool để LLM biết
+      gọi cái gì.</li>
+    <li><span class="step-title">Gọi LLM (Gemini)</span> —
+      <span class="file">agent.py:104-126</span>. Bọc <code>try/except</code> +
+      <code>retry</code> + <code>backoff</code>; lỗi mạng không làm sập loop.</li>
+    <li><span class="step-title">Parse output</span> —
+      <span class="file">agent.py:171-181</span>. Regex tách
+      <code>Final Answer:</code> (xong) hoặc <code>Action: tool(args)</code> (đọc doc).</li>
+    <li><span class="step-title">⭐ ĐỌC TÀI LIỆU</span> —
+      <span class="file">agent.py:208 → lab_tools.py:63 → loader.py:33-34</span>.
+      <code>_execute_tool()</code> gọi <code>search_lab_docs()</code> →
+      <code>loader.search()</code> → <code>open(embedded_labs.json)</code>.
+      <b>Đây chính là chỗ đọc doc.</b></li>
+    <li><span class="step-title">Đưa nội dung doc lại cho LLM</span> —
+      <span class="file">agent.py:214</span>. Nối <code>Observation:</code> vào
+      transcript rồi lặp để Gemini tổng hợp câu trả lời.</li>
+    <li><span class="step-title">Kết thúc an toàn</span> —
+      <span class="file">agent.py:200-206, 222-232</span>. loop-guard /
+      max_steps / fallback về Observation chính xác cuối cùng.</li>
+  </ol>
+
+  <p style="margin:18px 0 6px;color:var(--muted)">Phần cốt lõi đọc doc (rút gọn):</p>
+<pre><span class="c"># src/knowledge/loader.py — nơi THỰC SỰ mở &amp; đọc tài liệu</span>
+<span class="k">def</span> <span class="f">load</span>():
+    <span class="k">global</span> _CACHE
+    <span class="k">if</span> _CACHE <span class="k">is</span> <span class="n">None</span>:
+        <span class="k">with</span> <span class="f">open</span>(_DATA_PATH, encoding=<span class="s">"utf-8"</span>) <span class="k">as</span> f:   <span class="c"># ← ĐỌC DOC</span>
+            _CACHE = json.<span class="f">load</span>(f)               <span class="c"># cache để không đọc lại</span>
+    <span class="k">return</span> _CACHE
+
+<span class="c"># src/tools/lab_tools.py — tool mà agent gọi</span>
+<span class="k">def</span> <span class="f">search_lab_docs</span>(args):
+    hits = loader.<span class="f">search</span>(args, max_results=<span class="n">5</span>)  <span class="c"># tìm trong doc, không phân biệt dấu</span>
+    <span class="k">return</span> render(hits)                       <span class="c"># → trả về Observation cho LLM</span></pre>
+</div>
+
+<!-- =================== 3. KEYWORDS =================== -->
+<h2><span class="num">03</span>Keyword chuẩn Software Engineer</h2>
+<div class="panel">
+  <p style="margin:0 0 10px;color:var(--muted)">Thuật ngữ dùng khi mô tả/giải thích hệ thống này trong CV, báo cáo, review:</p>
+  <div class="chips">
+    <span class="chip k1"><b>ReAct loop</b> (Reason+Act)</span>
+    <span class="chip k1"><b>Tool-calling</b> / Function-calling</span>
+    <span class="chip k1"><b>Agent orchestration</b></span>
+    <span class="chip"><b>Observation feedback</b></span>
+    <span class="chip"><b>System prompt</b> engineering</span>
+    <span class="chip k2"><b>Knowledge base</b> lookup</span>
+    <span class="chip k2"><b>Keyword search</b> / retrieval</span>
+    <span class="chip k2"><b>Lazy loading</b> + caching</span>
+    <span class="chip k2"><b>Diacritics normalization</b></span>
+    <span class="chip"><b>Separation of concerns</b></span>
+    <span class="chip"><b>Provider abstraction</b> (Strategy pattern)</span>
+    <span class="chip"><b>Dependency injection</b> (tools)</span>
+    <span class="chip k3"><b>Retry</b> + exponential backoff</span>
+    <span class="chip k3"><b>Loop-guard</b> / circuit-break</span>
+    <span class="chip k3"><b>Input sanitization</b> (Safety)</span>
+    <span class="chip k3"><b>Graceful degradation</b> / fallback</span>
+    <span class="chip"><b>Idempotent cache</b></span>
+    <span class="chip"><b>Regex parsing</b></span>
+    <span class="chip"><b>Telemetry</b> / structured logging</span>
+    <span class="chip"><b>Token usage tracking</b></span>
+  </div>
+  <div class="legend" style="margin-top:14px">
+    <span><i class="dot" style="background:#d29922"></i>Agent / LLM</span>
+    <span><i class="dot" style="background:#3fb950"></i>Data / Retrieval</span>
+    <span><i class="dot" style="background:#bc8cff"></i>Reliability &amp; Safety</span>
+  </div>
+</div>
+
+<footer>
+  Day-3-Lab · Chatbot vs ReAct Agent — IT4210 Hệ nhúng · sinh tự động từ source
+  (<span class="file">agent.py</span>, <span class="file">lab_tools.py</span>, <span class="file">loader.py</span>)
+</footer>
+
+</div>
+</body>
+</html>

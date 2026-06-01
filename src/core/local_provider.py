@@ -9,24 +9,38 @@ class LocalProvider(LLMProvider):
     LLM Provider for local models using llama-cpp-python.
     Optimized for CPU usage with GGUF models.
     """
-    def __init__(self, model_path: str, n_ctx: int = 4096, n_threads: Optional[int] = None):
+    def __init__(
+        self,
+        model_path: str,
+        n_ctx: int = 4096,
+        n_threads: Optional[int] = None,
+        n_gpu_layers: int = 0,
+    ):
         """
         Initialize the local Llama model.
         Args:
             model_path: Path to the .gguf model file.
             n_ctx: Context window size.
             n_threads: Number of CPU threads to use. Defaults to all available.
+            n_gpu_layers: Number of model layers to offload to the GPU.
+                0   = CPU only (default).
+                -1  = offload ALL layers (fastest, needs enough VRAM).
+                N>0 = offload N layers, rest stay on CPU (use when VRAM is tight,
+                      e.g. a 4 GB card). Requires a CUDA/Metal/Vulkan build of
+                      llama-cpp-python; a CPU-only build silently ignores this.
         """
         super().__init__(model_name=os.path.basename(model_path))
-        
+
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}. Please download it first.")
 
+        self.n_gpu_layers = n_gpu_layers
         # n_threads=None will use all available cores
         self.llm = Llama(
             model_path=model_path,
             n_ctx=n_ctx,
             n_threads=n_threads,
+            n_gpu_layers=n_gpu_layers,
             verbose=False
         )
 

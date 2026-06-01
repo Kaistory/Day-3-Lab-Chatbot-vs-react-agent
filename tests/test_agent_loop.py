@@ -62,11 +62,14 @@ def test_unknown_tool_recovers():
 
 
 def test_max_steps_guard():
-    # Always asks for an action, never finalizes -> must stop at max_steps.
+    # Always asks for an action, never finalizes -> must stop at max_steps and
+    # fall back to the last accurate tool Observation (grounded data).
     llm = MockLLM(["Action: search_lab_docs(led)"] * 10)
     agent = ReActAgent(llm, TOOLS, max_steps=3)
     answer = agent.run("loop forever?")
-    assert "max_steps" in answer or "giới hạn" in answer
+    # Stopped (didn't run all 10 scripted steps) and returned grounded content.
+    assert llm._i <= 4
+    assert "LED" in answer or "max_steps" in answer or "giới hạn" in answer
     print("PASS test_max_steps_guard ->", answer[:60])
 
 
