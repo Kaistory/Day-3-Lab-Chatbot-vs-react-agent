@@ -74,9 +74,26 @@ _PROMPT_ABUSE_RE = re.compile(
 class Chatbot:
     """Single-turn (or simple multi-turn) chatbot with no tool access."""
 
-    def __init__(self, llm: LLMProvider, system_prompt: str = SYSTEM_PROMPT):
+    def __init__(
+        self,
+        llm: LLMProvider,
+        system_prompt: str = SYSTEM_PROMPT,
+        max_input_chars: int = 4000,
+    ):
         self.llm = llm
         self.system_prompt = system_prompt
+        self.max_input_chars = max_input_chars
+
+    def _sanitize_input(self, user_input: str) -> str:
+        """Normalize and truncate overly long chatbot input before any LLM call."""
+        text = (user_input or "").strip()
+        if len(text) > self.max_input_chars:
+            logger.log_event(
+                "CHATBOT_INPUT_TRUNCATED",
+                {"original_len": len(text), "max": self.max_input_chars},
+            )
+            text = text[: self.max_input_chars]
+        return text
 
     def _is_out_of_scope(self, user_input: str) -> bool:
         """Return True only for clearly off-topic or prompt-abuse requests."""
@@ -90,6 +107,10 @@ class Chatbot:
         return bool(_CLEARLY_OFF_TOPIC_RE.search(text))
 
     def ask(self, user_input: str) -> str:
+        user_input = self._sanitize_input(user_input)
+        if not user_input:
+            return "Vui lòng nhập câu hỏi."
+
         if self._is_out_of_scope(user_input):
             logger.log_event("CHATBOT_SCOPE_BLOCKED", {"input": user_input})
             return OFF_TOPIC_REPLY
