@@ -117,6 +117,62 @@ def analyze(events: List[Dict[str, Any]],
     return buckets
 
 
+def analyze_by_model(events: List[Dict[str, Any]],
+                     provider_filter: Optional[str],
+                     exclude_mock: bool) -> Dict[str, Dict[str, Any]]:
+    """Gom các LLM_METRIC theo model -> danh sách token để tính min/max/avg."""
+    models: Dict[str, Dict[str, Any]] = {}
+    for ev in events:
+        if ev.get("event") != "LLM_METRIC":
+            continue
+        d = ev.get("data", {})
+        provider = d.get("provider", "unknown")
+        if exclude_mock and provider == "mock":
+            continue
+        if provider_filter and provider != provider_filter:
+            continue
+        model = d.get("model", "unknown")
+        m = models.setdefault(model, {
+            "provider": provider, "total": [], "prompt": [], "completion": []})
+        m["total"].append(d.get("total_tokens", 0))
+        m["prompt"].append(d.get("prompt_tokens", 0))
+        m["completion"].append(d.get("completion_tokens", 0))
+    return models
+
+
+def _minmaxavg(vals: List[float]):
+    """Trả (min, max, avg) cho 1 danh sách; (0,0,0.0) nếu rỗng."""
+    if not vals:
+        return 0, 0, 0.0
+    return min(vals), max(vals), round(sum(vals) / len(vals), 1)
+
+
+def render_by_model(models: Dict[str, Dict[str, Any]], markdown: bool) -> str:
+    """Bảng token min/max/avg (total) theo từng model."""
+    cols = ["Model", "Prov.", "N", "tok_min", "tok_max", "tok_avg",
+            "in_avg", "out_avg"]
+    lines = []
+    if markdown:
+        lines.append("| " + " | ".join(cols) + " |")
+        lines.append("| " + " | ".join("---" for _ in cols) + " |")
+    else:
+        lines.append("  ".join(f"{c:>9}" if c != "Model" else f"{c:<22}" for c in cols))
+    for model in sorted(models):
+        m = models[model]
+        n = len(m["total"])
+        tmin, tmax, tavg = _minmaxavg(m["total"])
+        _, _, pavg = _minmaxavg(m["prompt"])
+        _, _, cavg = _minmaxavg(m["completion"])
+        cells = [model, m["provider"], n, tmin, tmax, tavg, pavg, cavg]
+        if markdown:
+            lines.append("| " + " | ".join(str(c) for c in cells) + " |")
+        else:
+            lines.append("  ".join(
+                f"{str(c):<22}" if i == 0 else f"{str(c):>9}"
+                for i, c in enumerate(cells)))
+    return "\n".join(lines)
+
+
 def _summarize(b: Dict[str, Any]) -> Dict[str, Any]:
     lat = b["latencies"]
     tasks = b["tasks"] or 1
@@ -191,6 +247,8 @@ def main() -> None:
     ap.add_argument("--provider", help="Only count this provider (openai/google/local/mock).")
     ap.add_argument("--exclude-mock", action="store_true", help="Drop mock test runs.")
     ap.add_argument("--markdown", action="store_true", help="Emit Markdown tables.")
+    ap.add_argument("--by-model", action="store_true",
+                    help="Also show per-model token min/max/avg.")
     ap.add_argument("--logs", default=os.path.join(_LOG_DIR, "*.log"),
                     help="Glob for log files (default: logs/*.log).")
     args = ap.parse_args()
@@ -215,6 +273,11 @@ def main() -> None:
     print(f"# Telemetry Dashboard{scope_str}")
     print(f"# Source: {len(paths)} file(s), {len(events)} events\n")
     print(render(summary_cb, summary_ag, args.markdown))
+
+    if args.by_model:
+        models = analyze_by_model(events, args.provider, args.exclude_mock)
+        print(f"\n# Per-model token stats (min / max / avg over {sum(len(m['total']) for m in models.values())} requests)")
+        print(render_by_model(models, args.markdown))
 
 
 if __name__ == "__main__":

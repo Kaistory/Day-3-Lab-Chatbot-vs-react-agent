@@ -10,9 +10,11 @@ _PRICING: Dict[str, Dict[str, float]] = {
     "gpt-4o":      {"in": 0.00250, "out": 0.01000},
     "gpt-4-turbo": {"in": 0.01000, "out": 0.03000},
     "gpt-3.5":     {"in": 0.00050, "out": 0.00150},
-    "gemini-1.5-flash": {"in": 0.000075, "out": 0.00030},
-    "gemini-1.5-pro":   {"in": 0.00125,  "out": 0.00500},
-    "gemini-2.0-flash": {"in": 0.000075, "out": 0.00030},
+    "gemini-3.1-flash-lite": {"in": 0.00010, "out": 0.00040},  # ước lượng tier flash-lite
+    "gemini-2.5-flash":      {"in": 0.000075, "out": 0.00030},
+    "gemini-1.5-flash":      {"in": 0.000075, "out": 0.00030},
+    "gemini-1.5-pro":        {"in": 0.00125,  "out": 0.00500},
+    "gemini-2.0-flash":      {"in": 0.000075, "out": 0.00030},
 }
 # Models priced at $0 (local inference / test mocks).
 _FREE_HINTS = ("local", "mock", "phi", "llama", "qwen", "mistral", "gguf")
