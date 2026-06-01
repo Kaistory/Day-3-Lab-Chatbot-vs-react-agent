@@ -6,3 +6,4 @@ requests>=2.31.0
 pytest>=7.4.0
 llama-cpp-python>=0.2.0
 ddgs>=6.0.0
+flask>=3.0.0
