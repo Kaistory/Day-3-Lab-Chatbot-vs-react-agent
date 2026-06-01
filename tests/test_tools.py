@@ -33,6 +33,21 @@ def test_get_lab_preparation():
     assert "TouchGFX" in out and "Phần cứng" in out
 
 
+def test_list_available_labs():
+    out = lab_tools.list_available_labs("")
+    assert "Lab 1" in out and "Lab 2" in out and "Lab 3" in out
+
+
+def test_get_lab_sections():
+    out = lab_tools.get_lab_sections("2")
+    assert "3.4" in out and "Thiết kế sơ đồ mạch" in out
+
+
+def test_get_lab_exercises():
+    out = lab_tools.get_lab_exercises("1")
+    assert "DisplayLEDs" in out and "Bài tập" in out
+
+
 def test_lookup_pin_mapping_component():
     out = lab_tools.lookup_pin_mapping("rc522")
     assert "PE4" in out and "PE2" in out
@@ -45,8 +60,11 @@ def test_search_diacritics_insensitive():
 
 
 def test_registry_consistency():
-    assert len(TOOLS) == 7
+    assert len(TOOLS) == 10
+    assert get_tool("list_available_labs") is not None
     assert get_tool("get_lab_objective") is not None
+    assert get_tool("get_lab_sections") is not None
+    assert get_tool("get_lab_exercises") is not None
     assert get_tool("does_not_exist") is None
 
 

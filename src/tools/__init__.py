@@ -8,6 +8,11 @@ from src.tools import lab_tools, web_tools
 
 TOOLS = [
     {
+        "name": "list_available_labs",
+        "description": "Liệt kê các lab Hệ nhúng hiện có trong knowledge base. Tham số: để trống.",
+        "func": lab_tools.list_available_labs,
+    },
+    {
         "name": "get_lab_objective",
         "description": "Lấy mục đích/mục tiêu của một bài lab Hệ nhúng. Tham số: số bài (1, 2 hoặc 3).",
         "func": lab_tools.get_lab_objective,
@@ -16,6 +21,16 @@ TOOLS = [
         "name": "get_lab_preparation",
         "description": "Lấy phần chuẩn bị (phần cứng, phần mềm, tài liệu) của một lab. Tham số: số bài (1, 2 hoặc 3).",
         "func": lab_tools.get_lab_preparation,
+    },
+    {
+        "name": "get_lab_sections",
+        "description": "Liệt kê các phần hướng dẫn chính của một lab. Tham số: số bài (1, 2 hoặc 3).",
+        "func": lab_tools.get_lab_sections,
+    },
+    {
+        "name": "get_lab_exercises",
+        "description": "Liệt kê riêng các bài tập của một lab. Tham số: số bài (1, 2 hoặc 3).",
+        "func": lab_tools.get_lab_exercises,
     },
     {
         "name": "get_exercise_guide",
