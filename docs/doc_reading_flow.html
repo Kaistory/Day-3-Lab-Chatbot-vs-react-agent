@@ -93,9 +93,12 @@
 <header>
   <h1>Luồng "đọc tài liệu (doc) để trả lời"</h1>
   <p>Trợ lý lab Hệ nhúng IT4210 · kiến trúc <b>ReAct Agent + Tools</b> (không phải RAG embedding)</p>
+  <p style="color:var(--muted);font-size:.85rem;margin:4px 0 0">
+    LLM provider-agnostic qua <code>LLMProvider</code> — mặc định <b>local Phi-3</b>
+    (<code>provider_factory.py:23</code>), tùy chọn <code>openai</code> / <code>google</code>.</p>
   <div style="margin-top:10px">
     <span class="tag">ReAct</span><span class="tag">Tool-Calling</span>
-    <span class="tag">Knowledge Base</span><span class="tag">LLM Provider</span>
+    <span class="tag">Knowledge Base</span><span class="tag">LLMProvider (local/openai/google)</span>
   </div>
 </header>
 
@@ -125,23 +128,23 @@
     <div class="arrow"></div>
 
     <div class="node io">
-      <span class="badge-file">agent.py:112</span>
-      <div class="lbl">LLM.generate() — Gemini sinh Thought/Action</div>
-      <div class="sub">_generate_with_retry() · retry + exponential backoff</div>
+      <span class="badge-file">agent.py:104-126</span>
+      <div class="lbl">LLMProvider.generate() — sinh Thought/Action</div>
+      <div class="sub">_generate_with_retry() · retry + exponential backoff (provider mặc định: local Phi-3)</div>
     </div>
     <div class="arrow"></div>
 
-    <div class="node decision">◆ Output có gì? (parse regex)</div>
+    <div class="node decision">◆ Parse output — 3 nhánh (agent.py:171–220)</div>
 
     <div class="arrow lbl-no"></div>
-    <div class="node end">⏹ Final Answer → trả người dùng</div>
+    <div class="node end">⏹ ① Final Answer (agent.py:171–174) → trả người dùng</div>
 
-    <div class="loopback">└─ hoặc nếu là Action ↓ (parse <code>Action: tool(args)</code> · agent.py:178)</div>
+    <div class="loopback">② nếu là <code>Action: tool(args)</code> (agent.py:178–181) ↓ — đường đọc doc chính</div>
 
     <div class="node read">
-      <span class="badge-file">lab_tools.py:63 → loader.py:33</span>
-      <div class="lbl">📄 ĐỌC TÀI LIỆU — execute tool</div>
-      <div class="sub">search_lab_docs() → loader.load()/search() → open(embedded_labs.json)</div>
+      <span class="badge-file">agent.py:208 → lab_tools.py:63 → loader.py:33</span>
+      <div class="lbl">📄 ĐỌC TÀI LIỆU — _execute_tool()</div>
+      <div class="sub">vd search_lab_docs() → loader.search()/load() → open(embedded_labs.json)</div>
     </div>
     <div class="arrow"></div>
 
@@ -151,7 +154,10 @@
       <div class="sub">transcript += "Observation: " + nội dung doc</div>
     </div>
 
-    <div class="loopback">↺ quay lại LOOP (đưa doc cho LLM kết luận) — loop-guard chống lặp vô hạn</div>
+    <div class="loopback">↺ quay lại LOOP (đưa doc cho LLM kết luận) — loop-guard chặn lặp (agent.py:200)</div>
+
+    <div class="loopback">③ không Final/không Action → fallback về Observation chính xác cuối (agent.py:217–220)</div>
+    <div class="loopback">⏱ hết max_steps / loop-guard → AGENT_END, vẫn trả dữ liệu grounded (agent.py:222–235)</div>
   </div>
 
   <div class="legend">
@@ -173,7 +179,7 @@
     <li><span class="step-title">Soạn prompt theo định dạng ReAct</span> —
       <span class="file">agent.py:65-91</span>. Bơm danh sách tool để LLM biết
       gọi cái gì.</li>
-    <li><span class="step-title">Gọi LLM (Gemini)</span> —
+    <li><span class="step-title">Gọi LLM (qua <code>LLMProvider</code>, mặc định local Phi-3)</span> —
       <span class="file">agent.py:104-126</span>. Bọc <code>try/except</code> +
       <code>retry</code> + <code>backoff</code>; lỗi mạng không làm sập loop.</li>
     <li><span class="step-title">Parse output</span> —
@@ -186,7 +192,7 @@
       <b>Đây chính là chỗ đọc doc.</b></li>
     <li><span class="step-title">Đưa nội dung doc lại cho LLM</span> —
       <span class="file">agent.py:214</span>. Nối <code>Observation:</code> vào
-      transcript rồi lặp để Gemini tổng hợp câu trả lời.</li>
+      transcript rồi lặp để LLM tổng hợp câu trả lời.</li>
     <li><span class="step-title">Kết thúc an toàn</span> —
       <span class="file">agent.py:200-206, 222-232</span>. loop-guard /
       max_steps / fallback về Observation chính xác cuối cùng.</li>
@@ -201,10 +207,15 @@
             _CACHE = json.<span class="f">load</span>(f)               <span class="c"># cache để không đọc lại</span>
     <span class="k">return</span> _CACHE
 
-<span class="c"># src/tools/lab_tools.py — tool mà agent gọi</span>
+<span class="c"># src/tools/lab_tools.py — tool mà agent gọi (lab_tools.py:63)</span>
 <span class="k">def</span> <span class="f">search_lab_docs</span>(args):
     hits = loader.<span class="f">search</span>(args, max_results=<span class="n">5</span>)  <span class="c"># tìm trong doc, không phân biệt dấu</span>
-    <span class="k">return</span> render(hits)                       <span class="c"># → trả về Observation cho LLM</span></pre>
+    <span class="k">if</span> <span class="k">not</span> hits:
+        <span class="k">return</span> <span class="s">f"Không tìm thấy nội dung nào khớp với '{args}'."</span>
+    out = [<span class="s">f"Kết quả cho '{args}':"</span>]
+    <span class="k">for</span> h <span class="k">in</span> hits:
+        out.<span class="f">append</span>(<span class="s">f"- (Lab {h['lab_id']} | {h['section']}) {h['snippet']}"</span>)
+    <span class="k">return</span> <span class="s">"\n"</span>.<span class="f">join</span>(out)                  <span class="c"># → Observation cho LLM</span></pre>
 </div>
 
 <!-- =================== 3. KEYWORDS =================== -->

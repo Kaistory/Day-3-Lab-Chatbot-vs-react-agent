@@ -24,7 +24,7 @@
 | Evaluation & Analysis (7) | §3 dashboard số liệu thật + §4 Chatbot vs Agent |
 | Flowchart & Insight (5) | `docs/doc_reading_flow.html` + §8 learning points |
 | Code Quality (4) | modular `core/agent/tools/knowledge/telemetry`, test offline |
-| **Bonus** Extra Monitoring (+3) | `metrics.py` cost thật theo model (§3.2) |
+| **Bonus** Extra Monitoring (+3) | `metrics.py` cost thật theo model (§3.2) + token min/max/avg per-model (§3.3) |
 | **Bonus** Extra Tools (+2) | `web_tools.py`: `web_search`, `fetch_url` |
 | **Bonus** Failure Handling (+3) | retry+backoff, loop-guard, sanitize (§5, §7) |
 | **Bonus** Ablation (+2) | `scripts/ablation.py` + `ablation_results.md` (§9) |
@@ -138,6 +138,27 @@ input/output theo model:
 | local (Phi-3) | 0 | 0 | **$0.0** |
 
 → cho phép so sánh ROI thật: 1 câu gpt-4o đắt hơn gemini-flash ~33×, local miễn phí.
+
+### 3.3 Token theo từng model (min / max / trung bình)
+
+Sinh bằng `python scripts/analyze_logs.py --exclude-mock --by-model --markdown`.
+Cách tính cho mỗi model: gom mọi `LLM_METRIC` theo `model`, rồi lấy
+`min`, `max`, `mean` của `total_tokens` (và trung bình input/output riêng).
+
+| Model | Provider | N req | tok_min | tok_max | tok_avg | in_avg | out_avg |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Phi-3-mini-4k-q4 | local | 50 | 406 | 3390 | 1342.9 | 1131.1 | 211.8 |
+| gemini-2.5-flash | google | 15 | 624 | 2500 | 1027.8 | 713.0 | 162.7 |
+| gpt-4o | openai | 87 | 118 | 1302 | 668.6 | 558.3 | 110.3 |
+
+**Đọc số**:
+- **Khoảng min→max rộng** (Phi-3: 406→3390) vì trong vòng ReAct, mỗi bước
+  transcript dài thêm do nối Observation (nội dung doc) → prompt tokens tăng dần;
+  request 1 bước ít token, request nhiều bước nhiều token.
+- **in_avg ≫ out_avg** ở mọi model → chi phí chủ yếu nằm ở **input** (transcript +
+  Observation), đúng đặc thù agent nhồi context.
+- gpt-4o `tok_min=118` là các câu chatbot 1 lượt ngắn; Phi-3 không có request nào
+  dưới 406 vì luôn đi qua agent nhiều bước.
 
 ---
 
