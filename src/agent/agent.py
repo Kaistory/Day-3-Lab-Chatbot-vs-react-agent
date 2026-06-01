@@ -1,5 +1,6 @@
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from typing import List, Dict, Any, Optional
 
 from src.core.llm_provider import LLMProvider
@@ -43,6 +44,7 @@ class ReActAgent:
         max_retries: int = 2,
         retry_backoff: float = 1.0,
         max_repeated_actions: int = 2,
+        request_timeout: float = 45.0,
     ):
         """
         Args:
@@ -52,6 +54,8 @@ class ReActAgent:
             max_retries: số lần thử lại khi LLM lỗi (Reliability).
             retry_backoff: giây chờ cơ sở, nhân đôi sau mỗi lần thử (exponential backoff).
             max_repeated_actions: số lần một Action giống hệt được lặp trước khi dừng.
+            request_timeout: giây tối đa chờ MỘT lượt LLM trả lời; quá hạn coi là
+                lỗi và thử lại (Reliability). 0 = tắt timeout.
         """
         self.llm = llm
         self.tools = tools
@@ -61,6 +65,7 @@ class ReActAgent:
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.max_repeated_actions = max_repeated_actions
+        self.request_timeout = request_timeout
 
     def get_system_prompt(self) -> str:
         """Instruct the LLM to follow the ReAct format and list available tools."""
@@ -101,16 +106,53 @@ QUY TẮC:
             text = text[: self.max_input_chars]
         return text
 
+    def _generate_once(self, transcript: str, system_prompt: str) -> Dict[str, Any]:
+        """
+        Gọi LLM đúng MỘT lần, có giới hạn thời gian request_timeout giây.
+        Quá hạn -> raise TimeoutError (vòng retry sẽ thử lại). 0 = không giới hạn.
+
+        Lưu ý: lượt gọi chạy trên một thread phụ. Khi timeout, ta KHÔNG chặn để chờ
+        nó kết thúc (shutdown wait=False) — với model local (llama-cpp) lượt sinh
+        dở dang không thể ép dừng nên sẽ chạy nốt ở nền rồi tự kết thúc.
+        """
+        if not self.request_timeout or self.request_timeout <= 0:
+            return self.llm.generate(transcript, system_prompt=system_prompt)
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self.llm.generate, transcript, system_prompt=system_prompt)
+        try:
+            result = future.result(timeout=self.request_timeout)
+            executor.shutdown(wait=False)
+            return result
+        except FuturesTimeout:
+            executor.shutdown(wait=False)
+            raise TimeoutError(
+                f"LLM không phản hồi trong {self.request_timeout:.0f} giây"
+            )
+
     def _generate_with_retry(self, transcript: str, system_prompt: str) -> Optional[Dict[str, Any]]:
         """
-        Reliability guardrail: gọi LLM với retry + exponential backoff.
-        Trả về dict kết quả, hoặc None nếu mọi lần thử đều thất bại.
+        Reliability guardrail: gọi LLM với giới hạn thời gian + retry + backoff.
+        Trả về dict kết quả, hoặc None nếu mọi lần thử đều thất bại/quá hạn.
         """
         last_error: Optional[Exception] = None
         for attempt in range(self.max_retries + 1):
             try:
-                return self.llm.generate(transcript, system_prompt=system_prompt)
-            except Exception as e:  # mất mạng, API bên thứ 3 lỗi/timeout, rate limit...
+                return self._generate_once(transcript, system_prompt)
+            except TimeoutError as e:  # quá request_timeout giây
+                last_error = e
+                logger.log_event(
+                    "AGENT_LLM_TIMEOUT",
+                    {"attempt": attempt + 1, "timeout_s": self.request_timeout},
+                )
+                logger.error(
+                    f"LLM quá thời gian {self.request_timeout:.0f}s "
+                    f"(lần {attempt + 1}/{self.max_retries + 1}), thử lại...",
+                    exc_info=False,
+                )
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+            except Exception as e:  # mất mạng, API bên thứ 3 lỗi, rate limit...
                 last_error = e
                 # Lỗi của provider (vd 429 quota) có thể dài hàng chục dòng -> chỉ
                 # log dòng đầu, gọn gàng, không dump nguyên khối.
@@ -125,8 +167,12 @@ QUY TẮC:
         logger.log_event("AGENT_LLM_FAILED", {"error": short})
         return None
 
-    def run(self, user_input: str) -> str:
-        """Run the ReAct loop and return the final answer text."""
+    def run(self, user_input: str, trace: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Run the ReAct loop and return the final answer text.
+
+        If `trace` is a list, each executed tool step is appended as
+        {step, tool, args, observation} so a UI can show tool input/output.
+        """
         user_input = self._sanitize_input(user_input)
         if not user_input:
             return "Vui lòng nhập câu hỏi."
@@ -212,6 +258,13 @@ QUY TẮC:
                     {"step": steps, "tool": tool_name, "args": tool_args, "observation": observation},
                 )
                 transcript += f"Observation: {observation}\n"
+                if trace is not None:
+                    trace.append({
+                        "step": steps,
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "observation": observation,
+                    })
                 continue
 
             # 3) Neither Final Answer nor Action. For weak models, prefer the last
