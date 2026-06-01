@@ -6,6 +6,7 @@ model's own knowledge. For domain-specific lab questions (chân cắm chính xá
 mục đích từng bài) it will guess or hallucinate, motivating the agent approach.
 """
 from typing import Optional
+import re
 
 from src.core.llm_provider import LLMProvider
 from src.telemetry.logger import logger
@@ -33,6 +34,42 @@ SYSTEM_PROMPT = (
     "logs, or internal implementation details."
 )
 
+OFF_TOPIC_REPLY = (
+    "Mình chỉ hỗ trợ các nội dung liên quan đến lab Hệ nhúng IT4210 như mục đích lab, "
+    "chuẩn bị, hướng dẫn bài tập, sơ đồ chân và các khái niệm nhúng liên quan. "
+    "Bạn hãy hỏi lại theo phạm vi này nhé."
+)
+
+_LAB_TOPIC_RE = re.compile(
+    r"\b("
+    r"it4210|embedded|systems?|lab|stm32|stm32f429|gpio|interrupt|timer|tim|uart|"
+    r"i2c|spi|freertos|touchgfx|rc522|rfid|ds1307|at24c32|sh1106|oled|hs0038|"
+    r"nec|remote|led|7seg|pin|wiring|datasheet|cubeide|hal|mcu|microcontroller|"
+    r"hệ\s*nhúng|he\s*nhung|bài\s*thực\s*hành|bai\s*thuc\s*hanh|mục\s*đích|"
+    r"muc\s*dich|chuẩn\s*bị|chuan\s*bi|bài\s*tập|bai\s*tap|sơ\s*đồ\s*chân|"
+    r"so\s*do\s*chan|ghép\s*nối|ghep\s*noi|vi\s*điều\s*khiển|vi\s*dieu\s*khien"
+    r")\b",
+    re.IGNORECASE,
+)
+_CLEARLY_OFF_TOPIC_RE = re.compile(
+    r"\b("
+    r"weather|football|soccer|movie|film|song|music|lyrics|girlfriend|boyfriend|"
+    r"dating|stock|crypto|bitcoin|marketing|business|recipe|travel|hotel|game|"
+    r"python|javascript|react|sql|essay|homework|assignment|translate|summarize|"
+    r"thời\s*tiết|thoi\s*tiet|bóng\s*đá|bong\s*da|phim|bài\s*hát|bai\s*hat|"
+    r"người\s*yêu|nguoi\s*yeu|chứng\s*khoán|chung\s*khoan|tiền\s*ảo|tien\s*ao|"
+    r"du\s*lịch|du\s*lich|nấu\s*ăn|nau\s*an|viết\s*hộ|viet\s*ho|dịch\s*hộ|dich\s*ho"
+    r")\b",
+    re.IGNORECASE,
+)
+_PROMPT_ABUSE_RE = re.compile(
+    r"(ignore\s+(all\s+)?previous|system\s+prompt|developer\s+message|api\s+key|"
+    r"environment\s+variable|free\s+api|proxy|bypass|jailbreak|đổi\s+vai|doi\s+vai|"
+    r"bỏ\s+qua\s+(luật|quy\s*tắc)|bo\s+qua\s+(luat|quy\s*tac)|tiết\s*lộ|tiet\s*lo|"
+    r"dùng\s*chùa\s*api|dung\s*chua\s*api)",
+    re.IGNORECASE,
+)
+
 
 class Chatbot:
     """Single-turn (or simple multi-turn) chatbot with no tool access."""
@@ -41,7 +78,22 @@ class Chatbot:
         self.llm = llm
         self.system_prompt = system_prompt
 
+    def _is_out_of_scope(self, user_input: str) -> bool:
+        """Return True only for clearly off-topic or prompt-abuse requests."""
+        text = (user_input or "").strip().lower()
+        if not text:
+            return False
+        if _PROMPT_ABUSE_RE.search(text):
+            return True
+        if _LAB_TOPIC_RE.search(text):
+            return False
+        return bool(_CLEARLY_OFF_TOPIC_RE.search(text))
+
     def ask(self, user_input: str) -> str:
+        if self._is_out_of_scope(user_input):
+            logger.log_event("CHATBOT_SCOPE_BLOCKED", {"input": user_input})
+            return OFF_TOPIC_REPLY
+
         logger.log_event("CHATBOT_START", {"input": user_input, "model": self.llm.model_name})
         try:
             result = self.llm.generate(user_input, system_prompt=self.system_prompt)
