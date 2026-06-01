@@ -36,8 +36,8 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
 
     if provider in ("google", "gemini"):
         from src.core.gemini_provider import GeminiProvider
-        # gemini-2.5-flash has free-tier quota; gemini-2.0-flash often returns 429 (limit 0).
-        model = env_model if env_model.startswith("gemini") else "gemini-2.5-flash"
+        # Mặc định gemini-3.1-flash-lite (nhanh, rẻ). DEFAULT_MODEL có thể override.
+        model = env_model if env_model.startswith("gemini") else "gemini-3.1-flash-lite"
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Thiếu GEMINI_API_KEY trong .env")
@@ -59,6 +59,15 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
             n_gpu_layers = int(os.getenv("LOCAL_GPU_LAYERS", "0"))
         except ValueError:
             n_gpu_layers = 0
-        return LocalProvider(model_path=default_path, n_gpu_layers=n_gpu_layers)
+        # max_tokens: yếu tố chính quyết định độ trễ trên CPU. Mặc định 256.
+        try:
+            max_tokens = int(os.getenv("LOCAL_MAX_TOKENS", "256"))
+        except ValueError:
+            max_tokens = 256
+        return LocalProvider(
+            model_path=default_path,
+            n_gpu_layers=n_gpu_layers,
+            max_tokens=max_tokens,
+        )
 
     raise ValueError(f"Provider không hỗ trợ: '{provider}'. Dùng: openai | google | local")

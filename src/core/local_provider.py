@@ -15,6 +15,7 @@ class LocalProvider(LLMProvider):
         n_ctx: int = 4096,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
+        max_tokens: int = 256,
     ):
         """
         Initialize the local Llama model.
@@ -28,6 +29,9 @@ class LocalProvider(LLMProvider):
                 N>0 = offload N layers, rest stay on CPU (use when VRAM is tight,
                       e.g. a 4 GB card). Requires a CUDA/Metal/Vulkan build of
                       llama-cpp-python; a CPU-only build silently ignores this.
+            max_tokens: Số token tối đa mỗi lần sinh. Trên CPU đây là yếu tố
+                quyết định độ trễ (mặc định 256 ~ vài chục giây/câu thay vì
+                hàng phút khi để 1024).
         """
         super().__init__(model_name=os.path.basename(model_path))
 
@@ -35,6 +39,7 @@ class LocalProvider(LLMProvider):
             raise FileNotFoundError(f"Model file not found at {model_path}. Please download it first.")
 
         self.n_gpu_layers = n_gpu_layers
+        self.max_tokens = max_tokens
         # n_threads=None will use all available cores
         self.llm = Llama(
             model_path=model_path,
@@ -56,7 +61,7 @@ class LocalProvider(LLMProvider):
 
         response = self.llm(
             full_prompt,
-            max_tokens=1024,
+            max_tokens=self.max_tokens,
             stop=["<|end|>", "Observation:"],
             echo=False
         )
@@ -87,7 +92,7 @@ class LocalProvider(LLMProvider):
 
         stream = self.llm(
             full_prompt,
-            max_tokens=1024,
+            max_tokens=self.max_tokens,
             stop=["<|end|>", "Observation:"],
             stream=True
         )
