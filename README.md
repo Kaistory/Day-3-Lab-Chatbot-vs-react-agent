@@ -78,9 +78,15 @@ python tests/test_agent_loop.py   # kiểm thử vòng lặp ReAct (mock LLM)
 ```
 
 ### MCP & Skill
-- `.mcp.json` cấu hình sẵn các MCP server: `fetch`, `git`, `filesystem`,
-  `sequential-thinking`, `context7` (tra cứu tài liệu/GitHub/mạng).
-- `.claude/skills/lab-assistant/` là skill Claude Code gói sẵn cách dùng trợ lý.
+- `.mcp.json` cấu hình sẵn các MCP server:
+  - `fetch`, `git`, `filesystem`, `sequential-thinking`, `context7` — tra cứu tài
+    liệu/GitHub/mạng, thao tác repo.
+  - `playwright`, `chrome-devtools` — **kiểm thử UI/UX web** (mở trình duyệt thật,
+    click/gõ/chụp màn hình, audit Lighthouse/hiệu năng cho `webapp/`).
+- Skill Claude Code trong `.claude/skills/`:
+  - `lab-assistant/` — dùng trợ lý lab (mục đích/chuẩn bị/sơ đồ chân/bài tập).
+  - `web-uiux/` — chỉnh & kiểm thử **giao diện web** (Flask chat UI trong
+    `webapp/app.py`): design tokens, responsive, accessibility, dùng MCP để test.
 
 ## 🎯 Lab Objectives
 

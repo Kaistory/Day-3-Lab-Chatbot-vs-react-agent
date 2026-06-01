@@ -294,82 +294,166 @@ _HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Trợ lý Lab Hệ nhúng (IT4210)</title>
 <style>
-  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0; --mut:#94a3b8;
-          --acc:#38bdf8; --user:#0ea5e9; --bot:#1e293b; }
+  /* ===== Design tokens — dark mặc định, light qua [data-theme="light"] ===== */
+  :root {
+    --bg:#0b1020; --bg-soft:#0e1530; --card:#141c30; --card-2:#0d1424;
+    --line:#283455; --txt:#e8edf7; --mut:#93a1bd;
+    --acc:#5b9dff; --acc-2:#a78bfa; --grad:linear-gradient(135deg,#5b9dff,#a78bfa);
+    --user-fg:#06122a; --code-bg:#0a1020;
+    --danger-bg:#3b1d22; --danger-line:#7f1d1d; --danger-fg:#fca5a5;
+    --glow1:rgba(91,157,255,.18); --glow2:rgba(167,139,250,.15);
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  [data-theme="light"] {
+    --bg:#f4f7fc; --bg-soft:#eef2f9; --card:#ffffff; --card-2:#f3f6fb;
+    --line:#e2e8f2; --txt:#0f1729; --mut:#5b6678;
+    --acc:#2563eb; --acc-2:#7c3aed; --grad:linear-gradient(135deg,#2563eb,#7c3aed);
+    --user-fg:#ffffff; --code-bg:#eef2fb;
+    --danger-bg:#fde8e8; --danger-line:#f5b5b5; --danger-fg:#b42318;
+    --glow1:rgba(37,99,235,.10); --glow2:rgba(124,58,237,.08);
+    --shadow:0 10px 30px rgba(15,23,42,.10);
+  }
   * { box-sizing: border-box; }
   html, body { height:100%; }
-  body { margin:0; font-family: system-ui, "Segoe UI", sans-serif; background:var(--bg);
-         color:var(--txt); display:flex; flex-direction:column; height:100vh; }
+  body { margin:0; font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+         background:var(--bg); color:var(--txt); display:flex; flex-direction:column;
+         height:100vh; transition:background .25s, color .25s; }
+  body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(900px 520px at 85% -140px, var(--glow1), transparent 60%),
+      radial-gradient(820px 520px at -10% 115%, var(--glow2), transparent 55%); }
 
-  /* Thanh tiêu đề + điều khiển */
+  /* ===== Header (glass) ===== */
   header { padding:12px 18px; border-bottom:1px solid var(--line); display:flex;
-           align-items:center; gap:14px; flex-wrap:wrap; flex:0 0 auto; }
-  header h1 { margin:0; font-size:16px; white-space:nowrap; }
-  header .ctrls { display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; }
-  select { font:inherit; border-radius:8px; border:1px solid var(--line);
-           background:var(--card); color:var(--txt); padding:7px 10px; font-size:13px; }
-  .ghost { background:transparent; border:1px solid var(--line); color:var(--mut);
-           border-radius:8px; padding:7px 12px; font:inherit; font-size:13px; cursor:pointer; }
-  .ghost:hover { color:var(--txt); }
+           align-items:center; gap:12px; flex-wrap:wrap; flex:0 0 auto;
+           background:color-mix(in srgb, var(--bg) 70%, transparent);
+           backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  .brand { display:flex; align-items:center; gap:9px; font-size:16px; font-weight:800;
+           white-space:nowrap; margin:0; }
+  .brand .logo { width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+                 background:var(--grad); box-shadow:0 4px 14px var(--glow1); font-size:16px; }
+  .brand .name { background:var(--grad); -webkit-background-clip:text; background-clip:text;
+                 color:transparent; }
+  header .ctrls { display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; align-items:center; }
+  select { font:inherit; border-radius:9px; border:1px solid var(--line);
+           background:var(--card); color:var(--txt); padding:7px 10px; font-size:13px;
+           cursor:pointer; transition:border-color .15s; }
+  select:hover { border-color:var(--acc); }
+  .ghost { background:var(--card); border:1px solid var(--line); color:var(--mut);
+           border-radius:9px; padding:7px 11px; font:inherit; font-size:13px; cursor:pointer;
+           transition:transform .12s, color .15s, border-color .15s; line-height:1; }
+  .ghost:hover { color:var(--txt); border-color:var(--acc); transform:translateY(-1px); }
 
-  /* Khu vực hội thoại cuộn */
-  #chat { flex:1 1 auto; overflow-y:auto; padding:20px 0; }
-  .wrap { max-width:820px; margin:0 auto; padding:0 18px; }
-  .msg { display:flex; margin:14px 0; gap:10px; }
+  /* ===== Khu hội thoại ===== */
+  #chat { flex:1 1 auto; overflow-y:auto; padding:22px 0; scroll-behavior:smooth; }
+  .wrap { max-width:840px; margin:0 auto; padding:0 18px; }
+  .msg { display:flex; margin:16px 0; gap:11px; animation:rise .28s ease both; }
+  @keyframes rise { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
   .msg.user { justify-content:flex-end; }
-  .avatar { width:30px; height:30px; border-radius:50%; flex:0 0 auto; display:grid;
+  .avatar { width:32px; height:32px; border-radius:50%; flex:0 0 auto; display:grid;
             place-items:center; font-size:16px; background:var(--card); border:1px solid var(--line); }
+  .msg.bot .avatar { background:var(--grad); border:none; box-shadow:0 4px 12px var(--glow2); }
   .msg.user .avatar { order:2; }
-  .bubble { max-width:76%; padding:11px 14px; border-radius:14px; line-height:1.55;
-            white-space:pre-wrap; word-wrap:break-word; }
-  .msg.user .bubble { background:var(--user); color:#04293a; border-bottom-right-radius:4px; }
-  .msg.bot  .bubble { background:var(--bot); border:1px solid var(--line); border-bottom-left-radius:4px; }
-  .bubble .tag { display:block; font-size:11px; font-weight:700; color:var(--acc);
-                 margin-bottom:5px; text-transform:uppercase; letter-spacing:.4px; }
-  .bubble.err { background:#3b1d22; border-color:#7f1d1d; color:#fca5a5; }
-  .metrics { display:flex; gap:14px; flex-wrap:wrap; color:var(--mut); font-size:11px;
-             margin-top:7px; padding-top:7px; border-top:1px dashed var(--line); }
-  .metrics b { color:var(--txt); font-weight:600; }
-  /* Khối hiển thị các lần gọi công cụ (tool I/O) */
-  .trace { margin-top:9px; border-top:1px dashed var(--line); padding-top:8px; }
-  .trace > summary { cursor:pointer; color:var(--acc); font-size:12px; font-weight:600;
-                     list-style:none; user-select:none; }
-  .trace > summary::-webkit-details-marker { display:none; }
-  .trace > summary:hover { text-decoration:underline; }
-  .tstep { margin:8px 0 0; }
-  .tcall { font-size:12.5px; color:var(--txt); margin-bottom:3px; }
-  .tcall b { color:#a3e635; } .tcall i { color:var(--mut); font-style:normal; }
-  .tnum { display:inline-block; min-width:22px; color:var(--mut); font-size:11px; }
-  .tobs { margin:0; white-space:pre-wrap; word-wrap:break-word; font-size:12px;
-          line-height:1.5; background:#0b1220; border:1px solid var(--line);
-          border-radius:8px; padding:7px 9px; max-height:220px; overflow:auto; color:var(--txt); }
-  .empty { text-align:center; color:var(--mut); margin-top:12vh; font-size:14px; }
-  .empty code { background:#0b1220; padding:1px 5px; border-radius:4px; }
-  .dots span { display:inline-block; width:6px; height:6px; margin:0 1px; border-radius:50%;
-               background:var(--mut); animation:b 1.2s infinite; }
-  .dots span:nth-child(2){animation-delay:.2s} .dots span:nth-child(3){animation-delay:.4s}
-  @keyframes b { 0%,80%,100%{opacity:.3} 40%{opacity:1} }
+  .bubble { position:relative; max-width:78%; padding:12px 15px; border-radius:16px;
+            line-height:1.55; word-wrap:break-word; box-shadow:var(--shadow); }
+  .msg.user .bubble { background:var(--grad); color:var(--user-fg); border-bottom-right-radius:5px;
+                      font-weight:500; white-space:pre-wrap; }
+  .msg.bot  .bubble { background:var(--card); border:1px solid var(--line);
+                      border-bottom-left-radius:5px; }
+  .bubble .tag { display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.5px;
+                 text-transform:uppercase; margin-bottom:6px; padding:2px 8px; border-radius:999px;
+                 background:color-mix(in srgb, var(--acc) 16%, transparent); color:var(--acc); }
+  .bubble.err { background:var(--danger-bg); border-color:var(--danger-line); color:var(--danger-fg); }
+  .copy { position:absolute; top:8px; right:8px; opacity:0; border:1px solid var(--line);
+          background:var(--card-2); color:var(--mut); border-radius:7px; padding:3px 8px;
+          font-size:11px; cursor:pointer; transition:opacity .15s, color .15s; }
+  .msg.bot:hover .copy { opacity:1; }
+  .copy:hover { color:var(--txt); border-color:var(--acc); }
 
-  /* Ô nhập dính đáy */
-  footer { flex:0 0 auto; border-top:1px solid var(--line); background:var(--bg); }
-  .composer { max-width:820px; margin:0 auto; padding:12px 18px; display:flex; gap:10px; align-items:flex-end; }
-  textarea { flex:1; font:inherit; border-radius:12px; border:1px solid var(--line);
-             background:var(--card); color:var(--txt); padding:11px 13px; resize:none;
-             max-height:160px; line-height:1.5; }
-  #send { background:var(--acc); color:#04293a; border:none; font-weight:700; cursor:pointer;
-          padding:0 20px; height:44px; border-radius:12px; font:inherit; font-weight:700; }
-  #send:disabled { opacity:.5; cursor:wait; }
-  .hint { max-width:820px; margin:0 auto; padding:0 18px 10px; color:var(--mut); font-size:11px; }
+  /* ===== Markdown trong câu trả lời ===== */
+  .md { white-space:normal; }
+  .md > :first-child { margin-top:0; } .md > :last-child { margin-bottom:0; }
+  .md p { margin:.45em 0; } .md strong { font-weight:700; color:var(--txt); }
+  .md em { font-style:italic; } .md a { color:var(--acc); }
+  .md h3,.md h4 { margin:.6em 0 .3em; font-size:1.02em; }
+  .md ul,.md ol { margin:.4em 0; padding-left:1.35em; } .md li { margin:.22em 0; }
+  .md code { background:var(--code-bg); padding:1px 6px; border-radius:5px;
+             font-family:"Cascadia Code",Consolas,monospace; font-size:.88em; }
+  .md pre { background:var(--code-bg); border:1px solid var(--line); border-radius:9px;
+            padding:10px 12px; overflow:auto; margin:.5em 0; }
+  .md pre code { background:none; padding:0; }
+
+  .metrics { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; padding-top:9px;
+             border-top:1px dashed var(--line); }
+  .metrics span { font-size:11px; color:var(--mut); background:var(--card-2);
+                  border:1px solid var(--line); border-radius:7px; padding:3px 8px; }
+  .metrics b { color:var(--txt); font-weight:600; }
+
+  /* ===== Khối tool (Observation) ===== */
+  .trace { margin-top:10px; border-top:1px dashed var(--line); padding-top:9px; }
+  .trace > summary { cursor:pointer; color:var(--acc); font-size:12px; font-weight:700;
+                     list-style:none; user-select:none; display:inline-flex; gap:6px; }
+  .trace > summary::-webkit-details-marker { display:none; }
+  .trace > summary::before { content:"▸"; transition:transform .15s; }
+  .trace[open] > summary::before { transform:rotate(90deg); }
+  .tstep { margin:9px 0 0; }
+  .tcall { font-size:12.5px; color:var(--txt); margin-bottom:3px;
+           font-family:"Cascadia Code",Consolas,monospace; }
+  .tcall b { color:var(--acc-2); } .tcall i { color:var(--mut); font-style:normal; }
+  .tnum { display:inline-block; min-width:24px; color:var(--mut); font-size:11px; }
+  .tobs { margin:0; white-space:pre-wrap; word-wrap:break-word; font-size:12px; line-height:1.5;
+          background:var(--code-bg); border:1px solid var(--line); border-radius:9px;
+          padding:8px 10px; max-height:230px; overflow:auto; color:var(--txt); }
+
+  /* ===== Empty state + chips gợi ý ===== */
+  .empty { text-align:center; color:var(--mut); margin-top:9vh; font-size:14px; }
+  .empty .hello { font-size:34px; margin-bottom:6px; }
+  .empty h2 { margin:.2em 0; font-size:18px; color:var(--txt); }
+  .empty code { background:var(--code-bg); padding:1px 6px; border-radius:5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:9px; justify-content:center; margin-top:18px; }
+  .chip { border:1px solid var(--line); background:var(--card); color:var(--txt);
+          padding:8px 13px; border-radius:999px; cursor:pointer; font:inherit; font-size:13px;
+          transition:transform .12s, border-color .15s, background .15s; }
+  .chip:hover { border-color:var(--acc); transform:translateY(-2px);
+                background:color-mix(in srgb, var(--acc) 10%, var(--card)); }
+
+  .dots span { display:inline-block; width:6px; height:6px; margin:0 1.5px; border-radius:50%;
+               background:var(--acc); animation:b 1.2s infinite; }
+  .dots span:nth-child(2){animation-delay:.2s} .dots span:nth-child(3){animation-delay:.4s}
+  @keyframes b { 0%,80%,100%{opacity:.3; transform:translateY(0)} 40%{opacity:1; transform:translateY(-2px)} }
+
+  /* ===== Composer ===== */
+  footer { flex:0 0 auto; border-top:1px solid var(--line);
+           background:color-mix(in srgb, var(--bg) 70%, transparent);
+           backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  .composer { max-width:840px; margin:0 auto; padding:13px 18px 6px; display:flex; gap:10px;
+              align-items:flex-end; }
+  .field { flex:1; display:flex; align-items:flex-end; background:var(--card);
+           border:1px solid var(--line); border-radius:14px; padding:3px 6px;
+           transition:border-color .15s, box-shadow .15s; }
+  .field:focus-within { border-color:var(--acc); box-shadow:0 0 0 3px var(--glow1); }
+  textarea { flex:1; font:inherit; border:none; outline:none; background:transparent;
+             color:var(--txt); padding:9px 9px; resize:none; max-height:170px; line-height:1.5; }
+  #send { background:var(--grad); color:#fff; border:none; font-weight:700; cursor:pointer;
+          padding:0 20px; height:44px; border-radius:13px; font:inherit; font-weight:700;
+          box-shadow:0 6px 18px var(--glow1); transition:transform .12s, box-shadow .15s, opacity .15s; }
+  #send:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 9px 24px var(--glow1); }
+  #send:disabled { opacity:.45; cursor:wait; box-shadow:none; }
+  .hint { max-width:840px; margin:0 auto; padding:2px 18px 11px; color:var(--mut); font-size:11px;
+          text-align:center; }
+  .hint code { background:var(--code-bg); padding:1px 5px; border-radius:4px; }
+
+  @media (max-width:560px){ .bubble{max-width:88%} .brand .name{display:none} }
 </style>
 </head>
 <body>
 <header>
-  <h1>🤖 Trợ lý Lab Hệ nhúng</h1>
+  <h1 class="brand"><span class="logo">🤖</span><span class="name">Trợ lý Lab Hệ nhúng</span></h1>
   <div class="ctrls">
     <select id="mode" title="Chế độ">
-      <option value="agent">ReAct Agent (có tools)</option>
-      <option value="chatbot">Chatbot (không tools)</option>
-      <option value="compare">So sánh cả hai</option>
+      <option value="agent">🛠️ ReAct Agent</option>
+      <option value="chatbot">💬 Chatbot</option>
+      <option value="compare">⚖️ So sánh</option>
     </select>
     <select id="provider" title="Provider">
       <option value="">Provider mặc định</option>
@@ -377,23 +461,32 @@ _HTML = """<!doctype html>
       <option value="openai">openai</option>
       <option value="google">google</option>
     </select>
+    <button id="theme" class="ghost" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">🌙</button>
     <a href="/logs" class="ghost" style="text-decoration:none" title="Xem log server">📜 Log</a>
-    <button id="clear" class="ghost" title="Xoá hội thoại">🗑 Xoá</button>
+    <button id="clear" class="ghost" title="Xoá hội thoại" aria-label="Xoá hội thoại">🗑 Xoá</button>
   </div>
 </header>
 
 <div id="chat">
   <div class="wrap" id="stream">
     <div class="empty" id="empty">
-      👋 Hỏi mình về <b>Lab 1/2/3</b> môn Hệ nhúng (IT4210).<br>
-      Ví dụ: <code>Lab 2 cần chuẩn bị phần cứng gì?</code> · <code>Sơ đồ chân RC522?</code>
+      <div class="hello">🤖</div>
+      <h2>Trợ lý Lab Hệ nhúng (IT4210)</h2>
+      Hỏi mình về <b>mục đích · chuẩn bị · sơ đồ chân · bài tập</b> của Lab 1/2/3.
+      <div class="chips">
+        <button class="chip" data-q="Lab 2 cần chuẩn bị phần cứng gì?">Lab 2 cần chuẩn bị gì?</button>
+        <button class="chip" data-q="Sơ đồ chân ghép nối RC522 ở Lab 2 là gì?">Sơ đồ chân RC522?</button>
+        <button class="chip" data-q="Mục đích của Lab 1 là gì?">Mục đích Lab 1?</button>
+        <button class="chip" data-q="Hướng dẫn phần RFID của Lab 2">Hướng dẫn RFID Lab 2</button>
+        <button class="chip" data-q="Chỗ nào trong tài liệu nói về ngắt ngoài?">Tìm 'ngắt' trong tài liệu</button>
+      </div>
     </div>
   </div>
 </div>
 
 <footer>
   <div class="composer">
-    <textarea id="q" rows="1" placeholder="Nhập câu hỏi… (Enter để gửi, Shift+Enter xuống dòng)"></textarea>
+    <div class="field"><textarea id="q" rows="1" placeholder="Nhập câu hỏi…  (Enter để gửi · Shift+Enter xuống dòng)"></textarea></div>
     <button id="send">Gửi</button>
   </div>
   <div class="hint">
@@ -408,6 +501,48 @@ const stream = $("stream");
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => (
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// Markdown -> HTML AN TOÀN: escape TRƯỚC rồi mới định dạng, nên nội dung từ
+// model/server không thể chèn thẻ HTML. Hỗ trợ: code block, `code`, **đậm**,
+// *nghiêng*, tiêu đề #, danh sách -/1., link [..](http..).
+function mdInline(t) {
+  return t
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+             '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function mdToHtml(src) {
+  let s = escapeHtml(String(src || ""));
+  const blocks = [];
+  s = s.replace(/```([\s\S]*?)```/g, (_, c) => {
+    blocks.push(`<pre><code>${c.replace(/^\n/, "").replace(/\n$/, "")}</code></pre>`);
+    return ` ${blocks.length - 1} `;
+  });
+  s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  let html = "", list = null;
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  for (const line of s.split("\n")) {
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
+      closeList(); const lvl = Math.max(3, Math.min(4, m[1].length));
+      html += `<h${lvl}>${mdInline(m[2])}</h${lvl}>`;
+    } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+      if (list !== "ul") { closeList(); html += "<ul>"; list = "ul"; }
+      html += `<li>${mdInline(m[1])}</li>`;
+    } else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+      if (list !== "ol") { closeList(); html += "<ol>"; list = "ol"; }
+      html += `<li>${mdInline(m[1])}</li>`;
+    } else if (line.trim() === "") {
+      closeList();
+    } else {
+      closeList(); html += `<p>${mdInline(line)}</p>`;
+    }
+  }
+  closeList();
+  return html.replace(/<p> (\d+) <\/p>| (\d+) /g,
+                      (_, a, b) => blocks[a != null ? a : b]);
 }
 
 function scrollBottom() { $("chat").scrollTop = $("chat").scrollHeight; }
@@ -431,7 +566,7 @@ function addBot() {
 }
 
 function answerHtml(tag, text) {
-  return `<span class="tag">${tag}</span>${escapeHtml(text)}`;
+  return `<span class="tag">${tag}</span><div class="md">${mdToHtml(text)}</div>`;
 }
 
 function metricsHtml(data) {
@@ -461,20 +596,28 @@ function traceHtml(trace) {
 
 function fillAnswer(bubble, data) {
   const a = data.answers || {};
-  let html = "";
+  let html = "", raw = "";
   if (a.chatbot !== undefined && a.agent !== undefined) {
     // chế độ so sánh: hai nhãn trong cùng một bong bóng
     html += answerHtml("💬 Chatbot", a.chatbot);
-    html += `<hr style="border:none;border-top:1px solid var(--line);margin:12px 0">`;
+    html += `<hr style="border:none;border-top:1px solid var(--line);margin:13px 0">`;
     html += answerHtml("🛠️ ReAct Agent", a.agent);
+    raw = `[Chatbot]\n${a.chatbot}\n\n[ReAct Agent]\n${a.agent}`;
   } else if (a.chatbot !== undefined) {
-    html += answerHtml("💬 Chatbot", a.chatbot);
+    html += answerHtml("💬 Chatbot", a.chatbot); raw = a.chatbot;
   } else if (a.agent !== undefined) {
-    html += answerHtml("🛠️ ReAct Agent", a.agent);
+    html += answerHtml("🛠️ ReAct Agent", a.agent); raw = a.agent;
   }
   html += traceHtml(data.trace);
   html += metricsHtml(data);
-  bubble.innerHTML = html;
+  bubble.innerHTML = `<button class="copy" title="Sao chép câu trả lời">📋 Copy</button>` + html;
+  const btn = bubble.querySelector(".copy");
+  if (btn && raw) btn.addEventListener("click", () => {
+    (navigator.clipboard?.writeText(raw) || Promise.reject()).then(() => {
+      btn.textContent = "✓ Đã chép";
+      setTimeout(() => { btn.textContent = "📋 Copy"; }, 1500);
+    }).catch(() => { btn.textContent = "✗ Lỗi"; });
+  });
   scrollBottom();
 }
 
@@ -587,13 +730,46 @@ function autosize() {
   ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
 }
 
+// Markup empty (kèm chips) dùng lại khi bấm "Xoá".
+const EMPTY_HTML = `<div class="empty" id="empty">
+  <div class="hello">🤖</div>
+  <h2>Trợ lý Lab Hệ nhúng (IT4210)</h2>
+  Hỏi mình về <b>mục đích · chuẩn bị · sơ đồ chân · bài tập</b> của Lab 1/2/3.
+  <div class="chips">
+    <button class="chip" data-q="Lab 2 cần chuẩn bị phần cứng gì?">Lab 2 cần chuẩn bị gì?</button>
+    <button class="chip" data-q="Sơ đồ chân ghép nối RC522 ở Lab 2 là gì?">Sơ đồ chân RC522?</button>
+    <button class="chip" data-q="Mục đích của Lab 1 là gì?">Mục đích Lab 1?</button>
+    <button class="chip" data-q="Hướng dẫn phần RFID của Lab 2">Hướng dẫn RFID Lab 2</button>
+    <button class="chip" data-q="Chỗ nào trong tài liệu nói về ngắt ngoài?">Tìm 'ngắt' trong tài liệu</button>
+  </div>
+</div>`;
+
+// Chips: bấm là điền câu hỏi rồi gửi (event delegation -> chip sau khi Xoá vẫn chạy).
+stream.addEventListener("click", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  $("q").value = chip.dataset.q; autosize(); send();
+});
+
+// Toggle sáng/tối, lưu localStorage.
+const THEME_KEY = "lab_theme";
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $("theme").textContent = t === "light" ? "☀️" : "🌙";
+}
+applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+$("theme").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_KEY, next); applyTheme(next);
+});
+
 $("send").addEventListener("click", send);
 $("q").addEventListener("input", autosize);
 $("q").addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
 $("clear").addEventListener("click", () => {
-  stream.innerHTML = `<div class="empty" id="empty">👋 Hỏi mình về <b>Lab 1/2/3</b> môn Hệ nhúng (IT4210).</div>`;
+  stream.innerHTML = EMPTY_HTML;
   $("q").focus();
 });
 $("q").focus();
@@ -610,39 +786,64 @@ _LOGS_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Log server — Trợ lý Lab Hệ nhúng</title>
 <style>
-  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0; --mut:#94a3b8; --acc:#38bdf8; }
+  :root {
+    --bg:#0b1020; --card:#141c30; --card-2:#0d1424; --line:#283455; --txt:#e8edf7;
+    --mut:#93a1bd; --acc:#5b9dff; --acc-2:#a78bfa; --grad:linear-gradient(135deg,#5b9dff,#a78bfa);
+    --code-bg:#0a1020; --glow:rgba(91,157,255,.16); --shadow:0 8px 24px rgba(0,0,0,.30);
+  }
+  [data-theme="light"] {
+    --bg:#f4f7fc; --card:#ffffff; --card-2:#f3f6fb; --line:#e2e8f2; --txt:#0f1729;
+    --mut:#5b6678; --acc:#2563eb; --acc-2:#7c3aed; --grad:linear-gradient(135deg,#2563eb,#7c3aed);
+    --code-bg:#eef2fb; --glow:rgba(37,99,235,.10); --shadow:0 8px 24px rgba(15,23,42,.08);
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family: system-ui,"Segoe UI",sans-serif; background:var(--bg); color:var(--txt); }
+  body { margin:0; font-family: system-ui,"Segoe UI",Roboto,sans-serif; background:var(--bg);
+         color:var(--txt); transition:background .25s,color .25s; }
+  body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:radial-gradient(900px 500px at 85% -140px, var(--glow), transparent 60%); }
   header { padding:12px 18px; border-bottom:1px solid var(--line); display:flex;
-           align-items:center; gap:12px; flex-wrap:wrap; }
-  header h1 { margin:0; font-size:16px; }
+           align-items:center; gap:10px; flex-wrap:wrap;
+           background:color-mix(in srgb, var(--bg) 70%, transparent);
+           backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+           position:sticky; top:0; z-index:5; }
+  .brand { display:flex; align-items:center; gap:9px; margin:0; font-size:16px; font-weight:800; }
+  .brand .logo { width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+                 background:var(--grad); box-shadow:0 4px 14px var(--glow); }
+  .brand .name { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .spacer { margin-left:auto; }
-  select, button, a.btn { font:inherit; font-size:13px; border-radius:8px; border:1px solid var(--line);
-    background:var(--card); color:var(--txt); padding:7px 10px; cursor:pointer; text-decoration:none; }
-  button:hover, a.btn:hover { color:#fff; }
+  select, button, a.btn { font:inherit; font-size:13px; border-radius:9px; border:1px solid var(--line);
+    background:var(--card); color:var(--txt); padding:7px 11px; cursor:pointer; text-decoration:none;
+    transition:border-color .15s, transform .12s; }
+  select:hover, button:hover, a.btn:hover { border-color:var(--acc); transform:translateY(-1px); }
   main { max-width:980px; margin:0 auto; padding:18px; }
   .summary { color:var(--mut); font-size:13px; margin-bottom:12px; }
-  .entry { background:var(--card); border:1px solid var(--line); border-radius:10px;
-           padding:10px 12px; margin-bottom:8px; }
+  .entry { background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:11px 13px; margin-bottom:9px; box-shadow:var(--shadow); }
   .entry .top { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--mut); }
-  .badge { font-weight:700; font-size:11px; padding:2px 8px; border-radius:20px;
-           border:1px solid var(--line); color:var(--acc); letter-spacing:.3px; }
-  .badge.LLM_METRIC { color:#a3e635; } .badge.AGENT_END { color:#38bdf8; }
-  .badge.AGENT_STEP { color:#fbbf24; } .badge.AGENT_START { color:#c084fc; }
-  .badge.ERROR, .badge.RAW { color:#f87171; }
+  .badge { font-weight:800; font-size:10.5px; padding:3px 9px; border-radius:999px; letter-spacing:.3px;
+           background:color-mix(in srgb, var(--acc) 14%, transparent); color:var(--acc); }
+  .badge.LLM_METRIC { color:#84cc16; background:rgba(132,204,22,.14); }
+  .badge.AGENT_END { color:#38bdf8; background:rgba(56,189,248,.14); }
+  .badge.AGENT_STEP { color:#f59e0b; background:rgba(245,158,11,.14); }
+  .badge.AGENT_START { color:#a78bfa; background:rgba(167,139,250,.16); }
+  .badge.ERROR, .badge.RAW, .badge.AGENT_LLM_FAILED, .badge.AGENT_TIMEOUT { color:#f87171; background:rgba(248,113,113,.14); }
   .entry pre { white-space:pre-wrap; word-wrap:break-word; margin:8px 0 0; font-size:12.5px;
-               line-height:1.5; color:var(--txt); max-height:320px; overflow:auto; }
-  .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--mut); }
+               line-height:1.5; color:var(--txt); background:var(--code-bg); border:1px solid var(--line);
+               border-radius:9px; padding:9px 11px; max-height:320px; overflow:auto; }
+  .kv { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; font-size:12px; }
+  .kv span { color:var(--mut); background:var(--card-2); border:1px solid var(--line);
+             border-radius:7px; padding:3px 8px; }
   .kv b { color:var(--txt); }
   .empty { color:var(--mut); text-align:center; margin-top:12vh; }
 </style>
 </head>
 <body>
 <header>
-  <h1>📜 Log server</h1>
+  <h1 class="brand"><span class="logo">📜</span><span class="name">Log server</span></h1>
   <select id="date" title="Ngày"></select>
   <select id="event" title="Loại sự kiện"><option value="">Tất cả sự kiện</option></select>
   <button id="reload">↻ Tải lại</button>
+  <button id="theme" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">🌙</button>
   <a class="btn spacer" href="/">← Về chat</a>
 </header>
 <main>
@@ -704,6 +905,15 @@ async function load(){
   $("summary").textContent = `Ngày ${data.date || "—"} · ${data.count} bản ghi (mới nhất trước, tối đa 500).`;
   $("list").innerHTML = (data.entries||[]).map(entryHtml).join("") || `<div class="empty">Không có bản ghi.</div>`;
 }
+
+// Toggle sáng/tối (dùng chung khoá localStorage với trang chat).
+const THEME_KEY = "lab_theme";
+function applyTheme(t){ document.documentElement.dataset.theme = t; $("theme").textContent = t === "light" ? "☀️" : "🌙"; }
+applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+$("theme").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_KEY, next); applyTheme(next);
+});
 
 $("date").addEventListener("change", () => { $("event").value=""; load(); });
 $("event").addEventListener("change", load);
