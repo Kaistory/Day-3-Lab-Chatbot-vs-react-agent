@@ -4,3 +4,7 @@ __pycache__/
 *.log
 .DS_Store
 models/
+
+# Local LLM model files (large binaries)
+*.gguf
+Phi-3-mini-4k-instruct-q4.gguf
