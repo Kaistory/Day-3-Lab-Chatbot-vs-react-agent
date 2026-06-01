@@ -64,8 +64,11 @@ chạy offline với Phi-3) hoặc cờ `--provider`.
 ### Công cụ của Agent (`src/tools/`)
 | Tool | Chức năng |
 | :--- | :--- |
+| `list_available_labs` | Liệt kê các lab có trong knowledge base |
 | `get_lab_objective` | Mục đích/mục tiêu của Lab 1/2/3 |
 | `get_lab_preparation` | Phần cứng, phần mềm, tài liệu cần chuẩn bị |
+| `get_lab_sections` | Các phần hướng dẫn chính của một lab |
+| `get_lab_exercises` | Danh sách bài tập riêng của một lab |
 | `get_exercise_guide` | Các phần hướng dẫn + bài tập (lọc theo chủ đề) |
 | `search_lab_docs` | Tìm kiếm toàn văn (không phân biệt dấu) |
 | `lookup_pin_mapping` | Sơ đồ chân ghép nối (rc522, hs0038, led, ds1307...) |
