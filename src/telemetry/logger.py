@@ -16,13 +16,17 @@ class IndustryLogger:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        # File Handler (JSON)
+        # Avoid adding duplicate handlers if the logger is constructed twice.
+        if self.logger.handlers:
+            return
+
+        # File Handler (JSON) — UTF-8 so Vietnamese content logs correctly.
         log_file = os.path.join(log_dir, f"{datetime.now().strftime('%Y-%m-%d')}.log")
-        file_handler = logging.FileHandler(log_file)
-        
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+
         # Console Handler
         console_handler = logging.StreamHandler()
-        
+
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
 

@@ -8,3 +8,6 @@ models/
 # Local LLM model files (large binaries)
 *.gguf
 Phi-3-mini-4k-instruct-q4.gguf
+
+# Local machine-specific Claude settings
+.claude/settings.local.json

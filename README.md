@@ -37,6 +37,51 @@ DEFAULT_PROVIDER=local
 LOCAL_MODEL_PATH=./models/Phi-3-mini-4k-instruct-q4.gguf
 ```
 
+## 🤖 Ứng dụng: Trợ lý Lab môn Hệ nhúng (IT4210)
+
+Kịch bản triển khai của repo này là một **trợ lý hỗ trợ sinh viên môn Hệ nhúng**,
+trả lời về **mục đích lab → chuẩn bị lab → hướng dẫn bài tập**. Kiến thức được trích
+từ 3 tài liệu trong `docs/` (Lab 1: GPIO/Interrupt/Timer, Lab 2: I2C/SPI, Lab 3:
+FreeRTOS/TouchGFX) vào `data/embedded_labs.json`.
+
+### Chạy thử
+```bash
+# ReAct Agent (có công cụ tra cứu lab)
+python main.py agent --once "Lab 2 cần chuẩn bị gì và mục đích là gì?"
+
+# Chatbot baseline (không công cụ — để thấy giới hạn)
+python main.py chatbot --once "Sơ đồ chân ghép nối RC522 là gì?"
+
+# So sánh Chatbot vs Agent trên cùng câu hỏi
+python main.py compare "Hướng dẫn giải mã hồng ngoại NEC ở Lab 1?"
+
+# Chế độ tương tác
+python main.py agent
+```
+Chọn provider qua `.env` (`DEFAULT_PROVIDER=local|openai|google`, mặc định **local**
+chạy offline với Phi-3) hoặc cờ `--provider`.
+
+### Công cụ của Agent (`src/tools/`)
+| Tool | Chức năng |
+| :--- | :--- |
+| `get_lab_objective` | Mục đích/mục tiêu của Lab 1/2/3 |
+| `get_lab_preparation` | Phần cứng, phần mềm, tài liệu cần chuẩn bị |
+| `get_exercise_guide` | Các phần hướng dẫn + bài tập (lọc theo chủ đề) |
+| `search_lab_docs` | Tìm kiếm toàn văn (không phân biệt dấu) |
+| `lookup_pin_mapping` | Sơ đồ chân ghép nối (rc522, hs0038, led, ds1307...) |
+| `web_search`, `fetch_url` | Tra cứu trên mạng (datasheet, chuẩn giao tiếp) |
+
+### Test (không cần API key)
+```bash
+python tests/test_tools.py        # kiểm thử công cụ + knowledge base
+python tests/test_agent_loop.py   # kiểm thử vòng lặp ReAct (mock LLM)
+```
+
+### MCP & Skill
+- `.mcp.json` cấu hình sẵn các MCP server: `fetch`, `git`, `filesystem`,
+  `sequential-thinking`, `context7` (tra cứu tài liệu/GitHub/mạng).
+- `.claude/skills/lab-assistant/` là skill Claude Code gói sẵn cách dùng trợ lý.
+
 ## 🎯 Lab Objectives
 
 1.  **Baseline Chatbot**: Observe the limitations of a standard LLM when faced with multi-step reasoning.
