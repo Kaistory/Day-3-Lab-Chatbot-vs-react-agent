@@ -17,6 +17,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 
 # Vietnamese-safe stdout/stderr trên console Windows (cp1252) — phải chạy trước
 # khi import các module tạo logging StreamHandler.
@@ -27,7 +28,10 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template_string, request, stream_with_context
+from flask import (
+    Flask, Response, jsonify, make_response, render_template_string, request,
+    stream_with_context,
+)
 from werkzeug.exceptions import HTTPException
 
 from src.core.provider_factory import create_provider
@@ -68,6 +72,51 @@ def favicon():
     """Không có icon riêng -> trả 204 để trình duyệt thôi xin (đỡ rác log/console)."""
     return ("", 204)
 
+# --- Lịch sử hội thoại theo phiên (để AI trả lời như 1 cuộc hội thoại) ---------
+# Lưu phía SERVER theo session id (cookie), KHÔNG nhét vào Chatbot/Agent vì các
+# engine được cache dùng chung cho mọi người dùng. In-memory: hợp cho 1 tiến trình
+# (Flask threaded / 1 container). Giữ tối đa _MAX_TURNS lượt gần nhất.
+_SESSIONS = {}                 # sid -> list[{"role": "user"|"assistant", "content": str}]
+_SESSIONS_LOCK = threading.Lock()
+_HISTORY_COOKIE = "lab_sid"
+_MAX_TURNS = 12                # ~6 lượt hỏi-đáp gần nhất
+_MAX_TURN_CHARS = 1500        # cắt mỗi lượt khi lưu, tránh prompt phình to
+
+
+def _get_sid():
+    """Lấy session id từ cookie, tạo mới nếu chưa có."""
+    return request.cookies.get(_HISTORY_COOKIE) or uuid.uuid4().hex
+
+
+def _get_history(sid):
+    """Bản sao lịch sử của phiên (đọc an toàn dưới lock)."""
+    with _SESSIONS_LOCK:
+        return list(_SESSIONS.get(sid, []))
+
+
+def _append_turns(sid, user_text, assistant_text):
+    """Thêm lượt hỏi + đáp vào lịch sử phiên, cắt ngắn và giới hạn số lượt."""
+    user_text = (user_text or "").strip()[:_MAX_TURN_CHARS]
+    assistant_text = (assistant_text or "").strip()[:_MAX_TURN_CHARS]
+    if not user_text and not assistant_text:
+        return
+    with _SESSIONS_LOCK:
+        h = _SESSIONS.setdefault(sid, [])
+        if user_text:
+            h.append({"role": "user", "content": user_text})
+        if assistant_text:
+            h.append({"role": "assistant", "content": assistant_text})
+        if len(h) > _MAX_TURNS:
+            del h[: len(h) - _MAX_TURNS]
+
+
+def _primary_answer(answers):
+    """Câu trả lời để lưu vào lịch sử: ưu tiên agent, sau đó chatbot."""
+    if not isinstance(answers, dict):
+        return ""
+    return answers.get("agent") or answers.get("chatbot") or ""
+
+
 # --- Cache provider/chatbot/agent theo tên provider (nạp model 1 lần) ----------
 _CACHE = {}
 _FORCED_PROVIDER = None  # đặt qua --provider khi khởi động (nếu có)
@@ -103,7 +152,24 @@ def _metrics_since(start_index):
 
 @app.route("/")
 def index():
-    return render_template_string(_HTML, tools=TOOLS)
+    # Đảm bảo trình duyệt có cookie session id ngay từ lần tải trang -> cả
+    # /api/ask và /api/ask_stream (EventSource) đều gửi kèm cookie này.
+    sid = _get_sid()
+    resp = make_response(render_template_string(_HTML, tools=TOOLS))
+    resp.set_cookie(
+        _HISTORY_COOKIE, sid, max_age=7 * 24 * 3600,
+        samesite="Lax", httponly=True,
+    )
+    return resp
+
+
+@app.route("/api/reset", methods=["POST"])
+def reset():
+    """Xoá lịch sử hội thoại của phiên (gọi khi bấm 'Xoá')."""
+    sid = _get_sid()
+    with _SESSIONS_LOCK:
+        _SESSIONS.pop(sid, None)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -122,24 +188,27 @@ def ask():
         logger.error(f"Init provider lỗi: {_short_error(e)}", exc_info=False)
         return jsonify({"error": f"Không khởi tạo được provider: {_short_error(e)}"}), 500
 
+    sid = _get_sid()
+    history = _get_history(sid)  # các lượt trước để trả lời theo ngữ cảnh
     started = time.time()
     start_index = len(tracker.session_metrics)
     agent_trace = []  # các lần gọi tool (tool, args, observation) để hiện trên UI
     try:
         if mode == "chatbot":
-            result = {"chatbot": engines["chatbot"].ask(question)}
+            result = {"chatbot": engines["chatbot"].ask(question, history=history)}
         elif mode == "compare":
             result = {
-                "chatbot": engines["chatbot"].ask(question),
-                "agent": engines["agent"].run(question, trace=agent_trace),
+                "chatbot": engines["chatbot"].ask(question, history=history),
+                "agent": engines["agent"].run(question, trace=agent_trace, history=history),
             }
         else:  # agent
-            result = {"agent": engines["agent"].run(question, trace=agent_trace)}
+            result = {"agent": engines["agent"].run(question, trace=agent_trace, history=history)}
     except Exception as e:
         # Lỗi đã được ghi vào file log; trả về trình duyệt thông điệp gọn, không dump.
         logger.error(f"Xử lý câu hỏi lỗi: {_short_error(e)}", exc_info=False)
         return jsonify({"error": f"Lỗi khi xử lý: {_short_error(e)}"}), 500
 
+    _append_turns(sid, question, _primary_answer(result))
     return jsonify({
         "mode": mode,
         "model": engines["model"],
@@ -165,6 +234,10 @@ def ask_stream():
     question = (request.args.get("question") or "").strip()
     mode = (request.args.get("mode") or "agent").strip()
     provider = (request.args.get("provider") or "").strip() or None
+    # Đọc session id + lịch sử NGAY (còn trong request context, trước khi vào
+    # generator chạy ngoài context).
+    sid = _get_sid()
+    history = _get_history(sid)
 
     def sse(event, payload):
         return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -189,14 +262,14 @@ def ask_stream():
         def worker():
             try:
                 if mode == "chatbot":
-                    holder["answers"] = {"chatbot": engines["chatbot"].ask(question)}
+                    holder["answers"] = {"chatbot": engines["chatbot"].ask(question, history=history)}
                 elif mode == "compare":
                     holder["answers"] = {
-                        "chatbot": engines["chatbot"].ask(question),
-                        "agent": engines["agent"].run(question, trace=trace),
+                        "chatbot": engines["chatbot"].ask(question, history=history),
+                        "agent": engines["agent"].run(question, trace=trace, history=history),
                     }
                 else:  # agent
-                    holder["answers"] = {"agent": engines["agent"].run(question, trace=trace)}
+                    holder["answers"] = {"agent": engines["agent"].run(question, trace=trace, history=history)}
             except Exception as e:
                 logger.error(f"Stream xử lý lỗi: {_short_error(e)}", exc_info=False)
                 holder["error"] = _short_error(e)
@@ -222,6 +295,7 @@ def ask_stream():
         if holder["error"]:
             yield sse("failed", {"error": f"Lỗi khi xử lý: {holder['error']}"})
         else:
+            _append_turns(sid, question, _primary_answer(holder["answers"]))
             yield sse("done", {
                 "mode": mode,
                 "model": engines["model"],
@@ -782,6 +856,8 @@ $("q").addEventListener("keydown", e => {
 $("clear").addEventListener("click", () => {
   stream.innerHTML = EMPTY_HTML;
   $("q").focus();
+  // Xoá luôn lịch sử hội thoại phía server cho phiên này.
+  fetch("/api/reset", { method: "POST" }).catch(() => {});
 });
 $("q").focus();
 </script>

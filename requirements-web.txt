@@ -1,0 +1,14 @@
+# Dependencies for the containerized web UI (webapp.app).
+# Image chạy provider OpenAI + Google. Provider 'local' (Phi-3) cần
+# llama-cpp-python + model .gguf 2.4 GB nên KHÔNG nằm trong image -> dùng
+# requirements.txt nếu cần.
+#
+# google-generativeai ghim CỨNG 0.8.6: để '>=' khiến pip dò hàng trăm phiên bản
+# rồi kẹt ở xung đột grpcio/google-api-core trên python:3.13-slim (làm hỏng build).
+openai>=1.0.0
+google-generativeai==0.8.6
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+requests>=2.31.0
+ddgs>=6.0.0
+flask>=3.0.0

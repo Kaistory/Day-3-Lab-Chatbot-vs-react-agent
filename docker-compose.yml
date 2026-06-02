@@ -1,0 +1,18 @@
+# Chạy web UI bằng Docker Compose:
+#   docker compose up --build
+# Khoá API lấy từ .env lúc CHẠY (không nướng vào image).
+services:
+  web:
+    build: .
+    image: lab-assistant-web
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      # Image web không có provider local; mặc định google (đổi sang openai nếu cần).
+      DEFAULT_PROVIDER: google
+    # Ghi log ra thư mục logs/ của host để xem ở trang /logs.
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped

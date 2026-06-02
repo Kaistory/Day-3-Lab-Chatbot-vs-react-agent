@@ -5,7 +5,7 @@ This is the contrast point for the ReAct agent: it can only answer from the
 model's own knowledge. For domain-specific lab questions (chân cắm chính xác,
 mục đích từng bài) it will guess or hallucinate, motivating the agent approach.
 """
-from typing import Optional
+from typing import Optional, List, Dict
 import re
 
 from src.core.llm_provider import LLMProvider
@@ -95,6 +95,24 @@ class Chatbot:
             text = text[: self.max_input_chars]
         return text
 
+    def _build_prompt(self, user_input: str, history: Optional[List[Dict[str, str]]]) -> str:
+        """
+        Gấp lịch sử hội thoại vào prompt để chatbot trả lời theo NGỮ CẢNH (đa lượt),
+        ví dụ câu hỏi nối tiếp "còn bài đó thì sao?". history là danh sách
+        {"role": "user"|"assistant", "content": str} theo thứ tự thời gian.
+        Provider chỉ nhận 1 chuỗi prompt nên ta nhúng hội thoại dạng văn bản.
+        """
+        if not history:
+            return user_input
+        lines = ["Lịch sử hội thoại trước đó (chỉ để hiểu ngữ cảnh câu hỏi mới, "
+                 "không lặp lại nguyên văn):"]
+        for turn in history:
+            who = "Người dùng" if turn.get("role") == "user" else "Trợ lý"
+            lines.append(f"{who}: {turn.get('content', '')}")
+        lines.append("")
+        lines.append(f"Câu hỏi hiện tại của người dùng: {user_input}")
+        return "\n".join(lines)
+
     def _is_out_of_scope(self, user_input: str) -> bool:
         """Return True only for clearly off-topic or prompt-abuse requests."""
         text = (user_input or "").strip().lower()
@@ -106,7 +124,13 @@ class Chatbot:
             return False
         return bool(_CLEARLY_OFF_TOPIC_RE.search(text))
 
-    def ask(self, user_input: str) -> str:
+    def ask(
+        self,
+        user_input: str,
+        history: Optional[List[Dict[str, str]]] = None,
+    ) -> str:
+        """Trả lời 1 câu hỏi. Nếu truyền history (các lượt trước) thì trả lời theo
+        ngữ cảnh hội thoại; không truyền thì hoạt động đơn lượt như cũ."""
         user_input = self._sanitize_input(user_input)
         if not user_input:
             return "Vui lòng nhập câu hỏi."
@@ -115,9 +139,14 @@ class Chatbot:
             logger.log_event("CHATBOT_SCOPE_BLOCKED", {"input": user_input})
             return OFF_TOPIC_REPLY
 
-        logger.log_event("CHATBOT_START", {"input": user_input, "model": self.llm.model_name})
+        prompt = self._build_prompt(user_input, history)
+        logger.log_event("CHATBOT_START", {
+            "input": user_input,
+            "model": self.llm.model_name,
+            "history_turns": len(history) if history else 0,
+        })
         try:
-            result = self.llm.generate(user_input, system_prompt=self.system_prompt)
+            result = self.llm.generate(prompt, system_prompt=self.system_prompt)
         except Exception as e:
             # Lỗi provider (vd 429 quota): log gọn ra file, trả thông điệp thân thiện.
             short = str(e).splitlines()[0][:200] if str(e).strip() else type(e).__name__

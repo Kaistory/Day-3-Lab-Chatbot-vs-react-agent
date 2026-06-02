@@ -1,0 +1,36 @@
+# Git / CI
+.git
+.gitignore
+.github
+
+# Secrets & local config — NEVER bake into the image (pass at runtime)
+.env
+.claude
+.mcp.json
+
+# Large model binaries (2.4 GB Phi-3) — local provider is not in the web image
+*.gguf
+models/
+
+# Python caches / venvs
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Logs & build artifacts
+logs/
+*.log
+build_local*.log
+
+# Docs / assets not needed at runtime
+image.png
+report/
+docs/
+*.md
+
+# Tests
+tests/

@@ -16,19 +16,31 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
 
     Env vars:
       DEFAULT_PROVIDER  openai | google | local   (default: local)
-      DEFAULT_MODEL     model name for openai/google
+      OPENAI_MODEL      model name for OpenAI   (default: gpt-4o)
+      GEMINI_MODEL      model name for Gemini   (default: gemini-3.1-flash-lite)
+      DEFAULT_MODEL     fallback model (chỉ áp khi khớp tiền tố provider đang dùng)
       OPENAI_API_KEY / GEMINI_API_KEY
       LOCAL_MODEL_PATH  path to .gguf file
     """
     provider = (provider or os.getenv("DEFAULT_PROVIDER", "local")).strip().lower()
 
-    # DEFAULT_MODEL only applies to the provider it belongs to; otherwise we fall
-    # back to that provider's own default (avoids e.g. asking Gemini for gpt-4o).
-    env_model = os.getenv("DEFAULT_MODEL", "")
+    # Mỗi provider có biến model RIÊNG trong .env (OPENAI_MODEL / GEMINI_MODEL) ->
+    # khai báo model cho từng API độc lập, đổi provider không phải sửa lại.
+    # DEFAULT_MODEL giữ làm fallback tương thích ngược: chỉ áp khi tên model khớp
+    # tiền tố của provider đang dùng (tránh đưa gpt-4o cho Gemini và ngược lại).
+    default_model = os.getenv("DEFAULT_MODEL", "")
+
+    def _model_for(prefix: str, env_var: str, fallback: str) -> str:
+        explicit = os.getenv(env_var, "").strip()
+        if explicit:
+            return explicit
+        if default_model.startswith(prefix):
+            return default_model
+        return fallback
 
     if provider == "openai":
         from src.core.openai_provider import OpenAIProvider
-        model = env_model if env_model.startswith("gpt") else "gpt-4o"
+        model = _model_for("gpt", "OPENAI_MODEL", "gpt-4o")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("Thiếu OPENAI_API_KEY trong .env")
@@ -36,8 +48,8 @@ def create_provider(provider: Optional[str] = None) -> LLMProvider:
 
     if provider in ("google", "gemini"):
         from src.core.gemini_provider import GeminiProvider
-        # Mặc định gemini-3.1-flash-lite (nhanh, rẻ). DEFAULT_MODEL có thể override.
-        model = env_model if env_model.startswith("gemini") else "gemini-3.1-flash-lite"
+        # Mặc định gemini-3.1-flash-lite (nhanh, rẻ); GEMINI_MODEL có thể override.
+        model = _model_for("gemini", "GEMINI_MODEL", "gemini-3.1-flash-lite")
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Thiếu GEMINI_API_KEY trong .env")
