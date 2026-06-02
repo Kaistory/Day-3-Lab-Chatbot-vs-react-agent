@@ -4,6 +4,7 @@ from threading import Lock
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template_string, request
 
+from src.core.gemini_provider import GeminiProvider
 from src.core.local_provider import LocalProvider
 from src.core.openai_provider import OpenAIProvider
 from src.tools.data_lookup import search_data
@@ -30,6 +31,17 @@ def get_provider(provider_name: str):
             model_name=os.getenv("OPENAI_MODEL", os.getenv("DEFAULT_MODEL", "gpt-4o")),
             api_key=api_key,
         )
+
+    elif provider_name == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is missing in .env")
+
+        llm = GeminiProvider(
+            model_name=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+            api_key=api_key,
+        )
+
     elif provider_name == "local":
         llm = LocalProvider(
             model_path=os.getenv(
@@ -37,6 +49,7 @@ def get_provider(provider_name: str):
                 "./models/Phi-3-mini-4k-instruct-q4.gguf",
             ),
         )
+
     else:
         raise ValueError(f"Unsupported provider: {provider_name}")
 
@@ -225,6 +238,7 @@ HTML = """
       <select id="provider">
         <option value="local">Phi-3 Local</option>
         <option value="openai">OpenAI</option>
+        <option value="gemini">Gemini</option>
       </select>
 
       <div class="sidebar-note">
@@ -248,7 +262,7 @@ HTML = """
           <textarea id="question" rows="1" placeholder="Ví dụ: Lab 2 làm gì cụ thể?"></textarea>
           <button id="sendBtn" class="send" onclick="askAgent()">↑</button>
         </div>
-        <div class="hint">Enter để gửi, Shift+Enter để xuống dòng. Chọn Phi-3 Local hoặc OpenAI ở sidebar.</div>
+        <div class="hint">Enter để gửi, Shift+Enter để xuống dòng. Chọn Phi-3 Local, OpenAI hoặc Gemini ở sidebar.</div>
       </div>
     </main>
   </div>
