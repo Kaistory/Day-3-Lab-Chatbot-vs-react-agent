@@ -58,3 +58,24 @@ def fetch_url(args: str) -> str:
     text = re.sub(r"(?s)<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:2000] + ("..." if len(text) > 2000 else "")
+def list_course(args: str = "") -> str:
+    """
+    Trả về thông tin tổng quan khóa học và các lab hiện có.
+    Tham số: để trống.
+    """
+    data = loader.load()
+    labs = loader.list_labs()
+
+    course = data.get("course", "IT4210")
+    kit = data.get("kit", "STM32F429I-DISC1")
+
+    lines = [
+        f"Khóa học: {course}",
+        f"Kit chính: {kit}",
+        "Danh sách lab:",
+    ]
+
+    for lab in labs:
+        lines.append(f"- Lab {lab['id']}: {lab['title']}")
+
+    return "\n".join(lines)

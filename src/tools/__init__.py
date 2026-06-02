@@ -57,6 +57,11 @@ TOOLS = [
         "description": "Tải nội dung văn bản của một URL. Tham số: địa chỉ URL.",
         "func": web_tools.fetch_url,
     },
+    {
+    "name": "list_course",
+    "description": "Liệt kê tổng quan khóa học, kit chính và các lab hiện có. Tham số: để trống.",
+    "function": web_tools.list_course,
+},
 ]
 
 
