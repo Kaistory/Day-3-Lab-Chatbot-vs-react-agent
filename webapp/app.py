@@ -28,6 +28,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template_string, request, stream_with_context
+from werkzeug.exceptions import HTTPException
 
 from src.core.provider_factory import create_provider
 from src.chatbot import Chatbot
@@ -54,8 +55,18 @@ def _short_error(e: Exception, limit: int = 200) -> str:
 @app.errorhandler(Exception)
 def _handle_uncaught(e):
     """Bắt mọi lỗi chưa xử lý -> trả JSON gọn, ghi file log, không lộ traceback."""
+    # HTTPException (404 thiếu route, 405 sai method...) giữ nguyên mã của nó,
+    # không gộp thành 500 (tránh /favicon.ico báo 500 giả).
+    if isinstance(e, HTTPException):
+        return e
     logger.error(f"Lỗi web chưa bắt: {_short_error(e)}", exc_info=False)
     return jsonify({"error": "Đã có lỗi xảy ra phía máy chủ. Vui lòng thử lại."}), 500
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Không có icon riêng -> trả 204 để trình duyệt thôi xin (đỡ rác log/console)."""
+    return ("", 204)
 
 # --- Cache provider/chatbot/agent theo tên provider (nạp model 1 lần) ----------
 _CACHE = {}
@@ -287,7 +298,7 @@ def logs_page():
 
 
 # --- Giao diện (1 trang HTML tĩnh, không cần asset ngoài) ----------------------
-_HTML = """<!doctype html>
+_HTML = r"""<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
@@ -518,7 +529,7 @@ function mdToHtml(src) {
   const blocks = [];
   s = s.replace(/```([\s\S]*?)```/g, (_, c) => {
     blocks.push(`<pre><code>${c.replace(/^\n/, "").replace(/\n$/, "")}</code></pre>`);
-    return ` ${blocks.length - 1} `;
+    return `\u0000${blocks.length - 1}\u0000`;
   });
   s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
   let html = "", list = null;
@@ -541,7 +552,7 @@ function mdToHtml(src) {
     }
   }
   closeList();
-  return html.replace(/<p> (\d+) <\/p>| (\d+) /g,
+  return html.replace(/<p>\u0000(\d+)\u0000<\/p>|\u0000(\d+)\u0000/g,
                       (_, a, b) => blocks[a != null ? a : b]);
 }
 
@@ -779,7 +790,7 @@ $("q").focus();
 
 
 # --- Trang xem log (đọc /api/logs) ---------------------------------------------
-_LOGS_HTML = """<!doctype html>
+_LOGS_HTML = r"""<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
