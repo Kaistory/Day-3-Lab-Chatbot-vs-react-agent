@@ -186,20 +186,44 @@ FORMAT RULES:
         logger.log_event("AGENT_LLM_FAILED", {"error": short})
         return None
 
-    def run(self, user_input: str, trace: Optional[List[Dict[str, Any]]] = None) -> str:
+    def _format_history(self, history: Optional[List[Dict[str, str]]]) -> str:
+        """Định dạng lịch sử hội thoại trước để chèn vào ĐẦU transcript, giúp agent
+        hiểu câu hỏi nối tiếp (vd "còn cái kia?", "bài đó cần gì?"). history là danh
+        sách {"role": "user"|"assistant", "content": str} theo thứ tự thời gian."""
+        if not history:
+            return ""
+        lines = ["Previous conversation (context only — resolve references such as "
+                 '"that", "the other one", "bài đó"; do NOT repeat it verbatim):']
+        for turn in history:
+            who = "User" if turn.get("role") == "user" else "Assistant"
+            lines.append(f"{who}: {turn.get('content', '')}")
+        return "\n".join(lines) + "\n\n"
+
+    def run(
+        self,
+        user_input: str,
+        trace: Optional[List[Dict[str, Any]]] = None,
+        history: Optional[List[Dict[str, str]]] = None,
+    ) -> str:
         """Run the ReAct loop and return the final answer text.
 
         If `trace` is a list, each executed tool step is appended as
         {step, tool, args, observation} so a UI can show tool input/output.
+        If `history` is given (prior user/assistant turns), it is prepended as
+        context so the agent can answer follow-up questions conversationally.
         """
         user_input = self._sanitize_input(user_input)
         if not user_input:
             return "Vui lòng nhập câu hỏi."
 
-        logger.log_event("AGENT_START", {"input": user_input, "model": self.llm.model_name})
+        logger.log_event("AGENT_START", {
+            "input": user_input,
+            "model": self.llm.model_name,
+            "history_turns": len(history) if history else 0,
+        })
 
         system_prompt = self.get_system_prompt()
-        transcript = f"Question: {user_input}\n"
+        transcript = self._format_history(history) + f"Question: {user_input}\n"
         steps = 0
         final_answer = None
         last_observation = None  # dùng làm fallback chính xác khi model yếu không kết luận tốt
